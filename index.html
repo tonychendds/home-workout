@@ -130,6 +130,7 @@
     font-size: 18px;
   }
   .big:active { filter: brightness(0.92); }
+  .big:disabled { opacity: 0.6; }
   .ghost {
     background: var(--card2);
     color: var(--text);
@@ -166,6 +167,64 @@
     margin: 0 0 14px;
     background: #10141b;
   }
+  .field {
+    display: block;
+    margin: 0 0 14px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .field input, .field select, .field textarea {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    background: #121418;
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font: inherit;
+    font-size: 16px;
+    color-scheme: dark;
+  }
+  .field textarea { min-height: 96px; resize: vertical; }
+  .hint { display: block; font-weight: 400; margin-top: 2px; }
+  .form-error { color: var(--danger); font-size: 15px; margin: 0 0 12px; min-height: 1.2em; }
+  .remove-wide {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    color: var(--danger);
+    border-color: #6a3535;
+    background: transparent;
+  }
+  .mine {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+  }
+  .thumb {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: 8px;
+    background: #10141b;
+    flex: none;
+  }
+  .mine-name { flex: 1; min-width: 0; }
+  .mine-name strong { display: block; font-size: 16px; }
+  .mine-name span { color: var(--muted); font-size: 13px; }
+  .remove {
+    background: transparent;
+    color: var(--danger);
+    font-weight: 700;
+    min-height: 44px;
+    padding: 8px 4px;
+    flex: none;
+  }
+  .yours { font-size: 20px; margin: 22px 0 4px; }
 </style>
 </head>
 <body>
@@ -176,15 +235,12 @@
     <details class="credits">
       <summary>Photo credits (Wikimedia Commons)</summary>
       <ul>
-        <li>Lat pulldown, elliptical, leg roll: Tyler Read, CC BY 2.0</li>
+        <li>Lat pulldown, elliptical: Tyler Read, CC BY 2.0</li>
         <li>Easy bike: Farida Takenzo, CC BY-SA 4.0</li>
-        <li>Deadlift hinge: Nenad Stojkovic, CC BY 2.0</li>
         <li>Dumbbell press, goblet squat, reverse lunge: PTPioneer, CC BY 2.0</li>
         <li>Cable fly, ab-wheel rollout: Nenad Stojkovic, CC BY 2.0</li>
         <li>Shoulder press: Trainer Academy, CC BY-SA 3.0</li>
         <li>Plank: Shixart1985, CC BY 2.0</li>
-        <li>Step-up: Kengucjun, CC BY-SA 3.0</li>
-        <li>Seated row: Miguel Angel Omaña Rojas, CC0</li>
         <li>Bike intervals: Klimek.6, public domain</li>
       </ul>
     </details>
@@ -200,7 +256,6 @@ const DAYS = [
     restStrength: 60,
     moves: [
       { name: "Lat pulldown", dose: "3 × 10", how: "Sit at the CENTR, pull the lat bar to your upper chest, then let it rise slow.", rest: 60 },
-      { name: "Seated cable row", dose: "3 × 10", how: "Sit tall, pull the handle to your ribs, and squeeze your shoulder blades.", rest: 60 },
       { name: "Dumbbell bench or floor press", dose: "3 × 8–12", how: "Pick a weight that is hard on the last reps, lower to your chest, and press up.", rest: 60 },
       { name: "Cable chest fly", dose: "3 × 10–12", how: "On the CENTR, arms open at chest height, then sweep the handles together in front of you.", rest: 60 },
       { name: "Dumbbell shoulder press", dose: "3 × 8–12", how: "Press the dumbbells from shoulder height to straight overhead.", rest: 60 },
@@ -211,15 +266,11 @@ const DAYS = [
   {
     id: "lower",
     title: "Day 2 · Lower",
-    blurb: "Squat, hinge, lunge, step, then elliptical",
+    blurb: "Squat, lunge, then elliptical",
     restStrength: 60,
     moves: [
       { name: "Goblet squat", dose: "3 × 10", how: "Hold one dumbbell at your chest and squat until your thighs are about parallel.", rest: 60 },
-      { name: "Dumbbell Romanian deadlift", dose: "3 × 10", how: "Hinge at your hips with a slight knee bend and lower the dumbbells along your legs.", rest: 60 },
       { name: "Reverse lunge", dose: "3 × 8 each leg", how: "Step one foot back, drop the back knee, then drive back to standing.", rest: 60 },
-      { name: "Step-up", dose: "3 × 8 each leg", how: "Step onto the Yes4All step and stand tall, then step down with control.", rest: 60 },
-      { name: "Cable glute kickback", dose: "3 × 12 each leg", how: "Face the CENTR and kick one leg back, squeezing the glute at the end.", rest: 60 },
-      { name: "Ab roller hamstring roll", dose: "3 × 10 each leg", how: "Sit or lie down, place the ab roller under one leg, and roll it along the hamstring.", rest: 60 },
       { name: "Sole elliptical, easy", dose: "3 minutes", how: "Ride the Sole elliptical at an easy pace for three minutes.", rest: 0 }
     ]
   },
@@ -240,21 +291,17 @@ const DAYS = [
   }
 ];
 
+const DAY_LABEL = { upper: "Upper", lower: "Lower", core: "Core" };
 
 const ART = {
   "Lat pulldown": "art/lat-pulldown.png",
-  "Seated cable row": "art/seated-row.png",
   "Dumbbell bench or floor press": "art/db-press.png",
   "Cable chest fly": "art/cable-fly.png",
   "Dumbbell shoulder press": "art/shoulder-press.png",
   "Cable face pull": "art/face-pull.png",
   "Air bike, easy": "art/air-bike.png",
   "Goblet squat": "art/goblet-squat.png",
-  "Dumbbell Romanian deadlift": "art/rdl.png",
   "Reverse lunge": "art/reverse-lunge.png",
-  "Step-up": "art/step-up.png",
-  "Cable glute kickback": "art/glute-kickback.png",
-  "Ab roller hamstring roll": "art/hamstring-roll.png",
   "Sole elliptical, easy": "art/elliptical.png",
   "Cable crunch": "art/cable-crunch.png",
   "Dead bug": "art/dead-bug.png",
@@ -265,13 +312,32 @@ const ART = {
   "Air bike intervals": "art/air-bike-intervals.png"
 };
 
-function fig(name) {
-  const src = ART[name];
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function validPhoto(s) {
+  return typeof s === "string" && /^data:image\/jpeg;base64,[a-z0-9+/]+=*$/i.test(s) && s.length <= 180000;
+}
+
+function photoOf(m) {
+  if (m && validPhoto(m.photo)) return m.photo;
+  if (m && ART[m.name]) return ART[m.name];
+  return "";
+}
+
+function fig(m) {
+  const src = photoOf(m);
   if (!src) return "";
-  return '<img class="fig" src="' + src + '" alt="Illustration of ' + name + '">';
+  return '<img class="fig" src="' + src + '" alt="Illustration of ' + esc(m.name) + '">';
 }
 
 const KEY = "tony-home-gym-plan-v1";
+const CUSTOM_KEY = "tony-home-gym-custom-v1";
 
 function load() {
   try {
@@ -287,7 +353,93 @@ function save(state) {
   localStorage.setItem(KEY, JSON.stringify(state));
 }
 
+function clean(s, max) {
+  return String(s || "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
+function loadCustom() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_KEY);
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data)) return [];
+    return data.filter(function (c) {
+      return c && typeof c.id === "string" && clean(c.name, 80) && DAY_LABEL[c.dayId];
+    }).map(function (c) {
+      return {
+        id: c.id,
+        dayId: c.dayId,
+        name: clean(c.name, 80),
+        dose: clean(c.dose, 40),
+        how: clean(c.how, 280),
+        photo: validPhoto(c.photo) ? c.photo : "",
+        rest: typeof c.rest === "number" ? c.rest : 60
+      };
+    });
+  } catch (e) {
+    return [];
+  }
+}
+function saveCustom(list) {
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+}
+
+function movesFor(day) {
+  const extra = customs.filter(function (c) { return c.dayId === day.id; }).map(function (c) {
+    return {
+      name: c.name,
+      dose: c.dose,
+      how: c.how,
+      rest: typeof c.rest === "number" ? c.rest : day.restStrength,
+      custom: true,
+      id: c.id,
+      photo: c.photo || ""
+    };
+  });
+  return day.moves.concat(extra);
+}
+
+async function compressImage(file) {
+  if (!file || !file.type || file.type.indexOf("image/") !== 0) throw new Error("type");
+  if (file.size > 25 * 1024 * 1024) throw new Error("big");
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch (e) {
+    bitmap = await createImageBitmap(file);
+  }
+  let maxSide = 960;
+  let data = "";
+  try {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const w = Math.max(1, Math.round(bitmap.width * scale));
+      const h = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d", { alpha: false });
+      ctx.fillStyle = "#10141b";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      let q = 0.68;
+      data = canvas.toDataURL("image/jpeg", q);
+      while (data.length > 120000 && q > 0.4) {
+        q = Math.round((q - 0.07) * 100) / 100;
+        data = canvas.toDataURL("image/jpeg", q);
+      }
+      if (data.length <= 150000 && validPhoto(data)) break;
+      maxSide = Math.round(maxSide * 0.7);
+    }
+  } finally {
+    if (bitmap.close) bitmap.close();
+  }
+  if (!validPhoto(data)) throw new Error("big");
+  return data;
+}
+
 const state = load();
+let customs = loadCustom();
 let screen = "home";
 let dayId = null;
 let index = 0;
@@ -295,20 +447,39 @@ let remaining = 0;
 let timerId = null;
 let running = false;
 let drawn = null;
+let notice = "";
 
 function pool() {
   const list = [];
-  DAYS.forEach(d => {
-    d.moves.forEach(m => list.push({ day: d.title, name: m.name, dose: m.dose, how: m.how, rest: m.rest || 0 }));
+  DAYS.forEach(function (d) {
+    movesFor(d).forEach(function (m) {
+      list.push({
+        day: d.title,
+        name: m.name,
+        dose: m.dose,
+        how: m.how,
+        rest: m.rest || 0,
+        photo: m.photo || "",
+        custom: !!m.custom,
+        id: m.id || ""
+      });
+    });
   });
   return list;
 }
 
+function sameMove(a, b) {
+  if (!a || !b) return false;
+  if (a.id && b.id) return a.id === b.id;
+  return a.name === b.name && a.day === b.day;
+}
+
 function drawOne() {
   const list = pool();
+  if (!list.length) return;
   let pick = list[Math.floor(Math.random() * list.length)];
-  if (list.length > 1 && drawn && pick.name === drawn.name && pick.day === drawn.day) {
-    const others = list.filter(m => !(m.name === drawn.name && m.day === drawn.day));
+  if (list.length > 1 && sameMove(pick, drawn)) {
+    const others = list.filter(function (m) { return !sameMove(m, drawn); });
     pick = others[Math.floor(Math.random() * others.length)];
   }
   drawn = pick;
@@ -316,7 +487,7 @@ function drawOne() {
 }
 
 function $(sel) { return document.querySelector(sel); }
-function dayById(id) { return DAYS.find(d => d.id === id); }
+function dayById(id) { return DAYS.find(function (d) { return d.id === id; }); }
 function pad(n) { return String(n).padStart(2, "0"); }
 function fmt(sec) { return pad(Math.floor(sec / 60)) + ":" + pad(sec % 60); }
 
@@ -332,73 +503,112 @@ function render() {
   if (screen === "home") root.innerHTML = homeHtml();
   else if (screen === "move") root.innerHTML = moveHtml();
   else if (screen === "draw") root.innerHTML = drawHtml();
+  else if (screen === "add") root.innerHTML = addHtml();
   else root.innerHTML = finishHtml();
   bind();
 }
 
 function homeHtml() {
-  const cards = DAYS.map(d => {
+  const cards = DAYS.map(function (d) {
     const mark = state.done[d.id] ? '<span class="badge">Done</span>' : "";
-    return '<button class="day-btn" data-day="' + d.id + '"><div><strong>' + d.title + '</strong><span>' + d.blurb + '</span></div>' + mark + '</button>';
+    return '<button class="day-btn" type="button" data-day="' + d.id + '"><div><strong>' + d.title + '</strong><span>' + d.blurb + '</span></div>' + mark + '</button>';
   }).join("");
   return '<h1>This week</h1><p class="sub">Pick a day. One exercise at a time.</p>' +
-    '<button class="day-btn draw-btn" id="draw">Draw an exercise</button>' +
-    '<div class="days">' + cards + '</div>';
+    '<button class="day-btn draw-btn" type="button" id="draw">Draw an exercise</button>' +
+    '<div class="days">' + cards + '</div>' +
+    '<button class="day-btn" type="button" id="add" style="margin-top:12px"><div><strong>Add an exercise</strong><span>Saved on this phone</span></div></button>';
+}
+
+function exerciseCard(progress, m, foot, lead) {
+  const remove = m.custom
+    ? '<button class="ghost remove-wide" type="button" data-remove="' + esc(m.id) + '">Remove this exercise</button>'
+    : "";
+  return '<div class="card">' +
+    '<p class="progress">' + progress + '</p>' +
+    (lead || "") +
+    fig(m) +
+    '<h2 class="name">' + esc(m.name) + '</h2>' +
+    (m.dose ? '<p class="dose">' + esc(m.dose) + '</p>' : '') +
+    (m.how ? '<p class="how">' + esc(m.how) + '</p>' : '') +
+    foot +
+    remove +
+    '</div>';
 }
 
 function moveHtml() {
   const day = dayById(dayId);
-  const m = day.moves[index];
+  const moves = movesFor(day);
+  const m = moves[index];
+  if (!m) {
+    screen = "finish";
+    return finishHtml();
+  }
   remaining = m.rest || 0;
   const restBlock = remaining
-    ? '<p class="rest-label">Rest after this set</p><p class="timer" id="clock">' + fmt(remaining) + '</p><div class="row"><button class="big" id="start">Start rest</button><button class="ghost" id="skip">Skip rest</button></div>'
-    : '<p class="rest-label">No rest after this one.</p><div class="row"><button class="big" id="next">Next</button></div>';
-  return '<button class="back" id="back">← Days</button>' +
-    '<div class="card">' +
-    '<p class="progress">' + day.title + ' · ' + (index + 1) + ' of ' + day.moves.length + '</p>' +
-    fig(m.name) +
-    '<h2 class="name">' + m.name + '</h2>' +
-    '<p class="dose">' + m.dose + '</p>' +
-    '<p class="how">' + m.how + '</p>' +
-    restBlock +
-    '<div class="row" style="margin-top:10px"><button class="ghost" id="next2">Next exercise</button></div>' +
-    '</div>';
+    ? '<p class="rest-label">Rest after this set</p><p class="timer" id="clock">' + fmt(remaining) + '</p><div class="row"><button class="big" type="button" id="start">Start rest</button><button class="ghost" type="button" id="skip">Skip rest</button></div>'
+    : '<p class="rest-label">No rest after this one.</p><div class="row"><button class="big" type="button" id="next">Next</button></div>';
+  const foot = restBlock + '<div class="row" style="margin-top:10px"><button class="ghost" type="button" id="next2">Next exercise</button></div>';
+  return '<button class="back" type="button" id="back">← Days</button>' +
+    exerciseCard(esc(day.title) + " · " + (index + 1) + " of " + moves.length, m, foot);
 }
 
 function drawHtml() {
   const m = drawn;
   remaining = m.rest || 0;
-  const restBlock = remaining
-    ? '<p class="rest-label">Rest after this set</p><p class="timer" id="clock">' + fmt(remaining) + '</p><div class="row"><button class="big" id="start">Start rest</button><button class="ghost" id="skip">Skip rest</button></div>'
+  const rest = remaining
+    ? '<p class="rest-label">Rest after this set</p><p class="timer" id="clock">' + fmt(remaining) + '</p><div class="row"><button class="big" type="button" id="start">Start rest</button><button class="ghost" type="button" id="skip">Skip rest</button></div>'
     : '<p class="rest-label">No rest on this one.</p>';
-  return '<button class="back" id="back">← Days</button>' +
-    '<div class="card">' +
-    '<p class="progress">Lottery · ' + m.day + '</p>' +
-    '<p class="pick-line">This is the one to do.</p>' +
-    fig(m.name) +
-    '<h2 class="name">' + m.name + '</h2>' +
-    '<p class="dose">' + m.dose + '</p>' +
-    '<p class="how">' + m.how + '</p>' +
-    restBlock +
-    '<div class="row" style="margin-top:10px"><button class="big" id="again">Draw again</button></div>' +
-    '</div>';
+  const foot = rest + '<div class="row" style="margin-top:10px"><button class="big" type="button" id="again">Draw again</button></div>';
+  return '<button class="back" type="button" id="back">← Days</button>' +
+    exerciseCard("Lottery · " + esc(m.day), m, foot, '<p class="pick-line">This is the one to do.</p>');
 }
 
 function finishHtml() {
   const day = dayById(dayId);
   const already = !!state.done[day.id];
-  return '<button class="back" id="back">← Days</button>' +
+  return '<button class="back" type="button" id="back">← Days</button>' +
     '<div class="card"><p class="progress">' + day.title + '</p>' +
     '<h2 class="name">That’s the day.</h2>' +
     '<p class="how">You went through every exercise.</p>' +
     (already ? '<p class="done-mark">Marked done.</p>' : '') +
-    '<button class="big" id="mark" style="width:100%">' + (already ? 'Done' : 'Mark day done') + '</button></div>';
+    '<button class="big" type="button" id="mark" style="width:100%">' + (already ? 'Done' : 'Mark day done') + '</button></div>';
+}
+
+function addHtml() {
+  const msg = notice;
+  notice = "";
+  const rows = customs.map(function (c) {
+    const thumb = validPhoto(c.photo) ? '<img class="thumb" src="' + c.photo + '" alt="">' : '';
+    return '<div class="mine">' + thumb +
+      '<div class="mine-name"><strong>' + esc(c.name) + '</strong><span>' + esc(DAY_LABEL[c.dayId] || "") + (c.dose ? " · " + esc(c.dose) : "") + '</span></div>' +
+      '<button class="remove" type="button" data-remove="' + esc(c.id) + '">Remove</button></div>';
+  }).join("");
+  const list = customs.length
+    ? '<h2 class="yours">Your exercises</h2>' + rows
+    : "";
+  return '<button class="back" type="button" id="back">← Days</button>' +
+    '<div class="card">' +
+    '<p class="progress">Add an exercise</p>' +
+    '<h2 class="name">Your own move</h2>' +
+    (msg ? '<p class="done-mark">' + esc(msg) + '</p>' : '') +
+    '<p class="form-error" id="form-error"></p>' +
+    '<form id="add-form">' +
+    '<label class="field">Name<input name="name" required maxlength="80" autocomplete="off"></label>' +
+    '<label class="field">Day<select name="day" required><option value="" selected disabled>Choose a day</option><option value="upper">Upper</option><option value="lower">Lower</option><option value="core">Core</option></select></label>' +
+    '<label class="field">Sets and reps<input name="dose" maxlength="40" placeholder="3 × 10" autocomplete="off"></label>' +
+    '<label class="field">How to do it<textarea name="how" maxlength="280" placeholder="Short cue for the movement."></textarea></label>' +
+    '<label class="field">Photo<span class="hint">From your camera or photo library.</span><input name="photo" type="file" accept="image/*"></label>' +
+    '<button class="big" type="submit" id="save-exercise" style="width:100%">Add exercise</button>' +
+    '</form>' +
+    list +
+    '</div>';
 }
 
 function goNext() {
   const day = dayById(dayId);
+  const moves = movesFor(day);
   stopTimer();
-  if (index + 1 >= day.moves.length) {
+  if (index + 1 >= moves.length) {
     screen = "finish";
   } else {
     index += 1;
@@ -429,9 +639,65 @@ function startRest() {
   }, 1000);
 }
 
+async function onAdd(ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const err = document.getElementById("form-error");
+  const name = clean(form.name.value, 80);
+  const picked = form.day.value;
+  const dose = clean(form.dose.value, 40);
+  const how = clean(form.how.value, 280);
+  const file = form.photo.files && form.photo.files[0];
+  if (!name) {
+    err.textContent = "Add a name.";
+    return;
+  }
+  const day = dayById(picked);
+  if (!day) {
+    err.textContent = "Pick Upper, Lower, or Core.";
+    return;
+  }
+  const submit = document.getElementById("save-exercise");
+  submit.disabled = true;
+  submit.textContent = "Saving…";
+  err.textContent = "";
+  let photo = "";
+  if (file) {
+    try {
+      photo = await compressImage(file);
+    } catch (e) {
+      err.textContent = "Couldn't read that photo. Try another from your camera or library.";
+      submit.disabled = false;
+      submit.textContent = "Add exercise";
+      return;
+    }
+  }
+  const item = {
+    id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+    dayId: picked,
+    name: name,
+    dose: dose,
+    how: how,
+    photo: photo,
+    rest: day.restStrength
+  };
+  const next = customs.concat([item]);
+  try {
+    saveCustom(next);
+  } catch (e) {
+    err.textContent = "That photo is too big for this phone's storage. Remove one you added, or choose a smaller photo.";
+    submit.disabled = false;
+    submit.textContent = "Add exercise";
+    return;
+  }
+  customs = next;
+  notice = "Added. It is in that day and in the lottery.";
+  render();
+}
+
 function bind() {
-  document.querySelectorAll("[data-day]").forEach(btn => {
-    btn.addEventListener("click", () => {
+  document.querySelectorAll("[data-day]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
       dayId = btn.getAttribute("data-day");
       index = 0;
       screen = "move";
@@ -439,26 +705,52 @@ function bind() {
     });
   });
   const draw = document.getElementById("draw");
-  if (draw) draw.addEventListener("click", () => { drawOne(); render(); });
+  if (draw) draw.addEventListener("click", function () { drawOne(); render(); });
   const again = document.getElementById("again");
-  if (again) again.addEventListener("click", () => { drawOne(); render(); });
+  if (again) again.addEventListener("click", function () { drawOne(); render(); });
+  const add = document.getElementById("add");
+  if (add) add.addEventListener("click", function () { screen = "add"; render(); });
   const back = document.getElementById("back");
-  if (back) back.addEventListener("click", () => { screen = "home"; render(); });
+  if (back) back.addEventListener("click", function () { screen = "home"; render(); });
   const start = document.getElementById("start");
   if (start) start.addEventListener("click", startRest);
   const skip = document.getElementById("skip");
-  if (skip) skip.addEventListener("click", () => { stopTimer(); const c = document.getElementById("clock"); if (c) { remaining = 0; c.textContent = "00:00"; } });
+  if (skip) skip.addEventListener("click", function () {
+    stopTimer();
+    const c = document.getElementById("clock");
+    if (c) { remaining = 0; c.textContent = "00:00"; }
+  });
   const next = document.getElementById("next");
   if (next) next.addEventListener("click", goNext);
   const next2 = document.getElementById("next2");
   if (next2) next2.addEventListener("click", goNext);
   const mark = document.getElementById("mark");
-  if (mark) mark.addEventListener("click", () => {
+  if (mark) mark.addEventListener("click", function () {
     state.done[dayId] = new Date().toISOString();
     state.cursor[dayId] = 0;
     save(state);
     screen = "home";
     render();
+  });
+  const form = document.getElementById("add-form");
+  if (form) form.addEventListener("submit", onAdd);
+  document.querySelectorAll("[data-remove]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const id = btn.getAttribute("data-remove");
+      const item = customs.find(function (c) { return c.id === id; });
+      if (!item) return;
+      if (!window.confirm("Remove " + item.name + "?")) return;
+      const next = customs.filter(function (c) { return c.id !== id; });
+      try {
+        saveCustom(next);
+      } catch (e) {
+        return;
+      }
+      customs = next;
+      if (drawn && drawn.id === id) drawn = null;
+      if (screen === "move" || screen === "draw") screen = "home";
+      render();
+    });
   });
 }
 
