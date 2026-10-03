@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tony's home gym plan</title>
+<style>
+  :root {
+    --bg: #121418;
+    --card: #1c2028;
+    --card2: #262c36;
+    --text: #f2f4f7;
+    --muted: #a8b0bc;
+    --accent: #3dd68c;
+    --accent-ink: #062016;
+    --warn: #f0c14b;
+    --line: #343b48;
+    --danger: #e06a6a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.4;
+  }
+  .wrap {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px 16px 40px;
+  }
+  header.top {
+    margin-bottom: 16px;
+  }
+  .gear, .disclaimer {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .disclaimer { margin-top: 6px; }
+  h1 {
+    font-size: 26px;
+    margin: 12px 0 4px;
+    letter-spacing: -0.02em;
+  }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+  .days { display: flex; flex-direction: column; gap: 12px; }
+  button {
+    font: inherit;
+    color: inherit;
+    border: 0;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .day-btn, .big, .ghost {
+    min-height: 56px;
+    border-radius: 14px;
+    padding: 16px 18px;
+  }
+  .day-btn {
+    background: var(--card);
+    text-align: left;
+    border: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .day-btn:active { background: var(--card2); }
+  .day-btn strong { display: block; font-size: 18px; }
+  .day-btn span { color: var(--muted); font-size: 14px; }
+  .badge {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: #163528;
+    padding: 6px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 20px 18px 18px;
+  }
+  .progress {
+    color: var(--muted);
+    font-size: 13px;
+    margin: 0 0 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .name { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .dose {
+    display: inline-block;
+    background: #163528;
+    color: var(--accent);
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 6px 12px;
+    margin: 0 0 12px;
+    font-size: 16px;
+  }
+  .how { font-size: 18px; margin: 0 0 18px; }
+  .rest-label { color: var(--muted); font-size: 14px; margin: 0 0 6px; }
+  .timer {
+    font-variant-numeric: tabular-nums;
+    font-size: 56px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin: 0 0 14px;
+  }
+  .row { display: flex; gap: 10px; }
+  .row > button { flex: 1; }
+  .big {
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-weight: 800;
+    font-size: 18px;
+  }
+  .big:active { filter: brightness(0.92); }
+  .ghost {
+    background: var(--card2);
+    color: var(--text);
+    font-weight: 700;
+    font-size: 17px;
+    border: 1px solid var(--line);
+  }
+  .back {
+    background: transparent;
+    color: var(--muted);
+    min-height: 44px;
+    padding: 8px 0;
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+  .done-mark { color: var(--accent); font-size: 18px; margin: 8px 0 16px; }
+  .hidden { display: none; }
+  .draw-btn {
+    width: 100%;
+    margin: 0 0 16px;
+    background: #2a2416;
+    color: var(--warn);
+    border: 1px solid #5a4a22;
+    font-weight: 800;
+    font-size: 18px;
+    text-align: center;
+  }
+  .pick-line { color: var(--warn); font-size: 16px; font-weight: 700; margin: 0 0 14px; }
+  .fig {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 16px;
+    margin: 0 0 14px;
+    background: #10141b;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <p class="gear">CENTR cables, hex dumbbells 5–35 lb, PROIRON ab roller, jump rope, 10 lb med ball, stability ball, yellow band, Sole elliptical, Schwinn Airdyne, Yes4All step.</p>
+    <p class="disclaimer">General home plan, not medical advice. Stop if something hurts.</p>
+  </header>
+  <main id="app"></main>
+</div>
+<script>
+const DAYS = [
+  {
+    id: "upper",
+    title: "Day 1 · Upper",
+    blurb: "Back, chest, shoulders, then an easy bike",
+    restStrength: 60,
+    moves: [
+      { name: "Lat pulldown", dose: "3 × 10", how: "Sit at the CENTR, pull the lat bar to your upper chest, then let it rise slow.", rest: 60 },
+      { name: "Seated cable row", dose: "3 × 10", how: "Sit tall, pull the handle to your ribs, and squeeze your shoulder blades.", rest: 60 },
+      { name: "Dumbbell bench or floor press", dose: "3 × 8–12", how: "Pick a weight that is hard on the last reps, lower to your chest, and press up.", rest: 60 },
+      { name: "Cable chest fly", dose: "3 × 10–12", how: "On the CENTR, arms open at chest height, then sweep the handles together in front of you.", rest: 60 },
+      { name: "Dumbbell shoulder press", dose: "3 × 8–12", how: "Press the dumbbells from shoulder height to straight overhead.", rest: 60 },
+      { name: "Cable face pull", dose: "3 × 12", how: "Use the rope on the CENTR and pull toward your face, elbows high.", rest: 60 },
+      { name: "Air bike, easy", dose: "60 seconds", how: "Pedal the Schwinn Airdyne at an easy pace for one minute.", rest: 20 }
+    ]
+  },
+  {
+    id: "lower",
+    title: "Day 2 · Lower",
+    blurb: "Squat, hinge, lunge, step, then elliptical",
+    restStrength: 60,
+    moves: [
+      { name: "Goblet squat", dose: "3 × 10", how: "Hold one dumbbell at your chest and squat until your thighs are about parallel.", rest: 60 },
+      { name: "Dumbbell Romanian deadlift", dose: "3 × 10", how: "Hinge at your hips with a slight knee bend and lower the dumbbells along your legs.", rest: 60 },
+      { name: "Reverse lunge", dose: "3 × 8 each leg", how: "Step one foot back, drop the back knee, then drive back to standing.", rest: 60 },
+      { name: "Step-up", dose: "3 × 8 each leg", how: "Step onto the Yes4All step and stand tall, then step down with control.", rest: 60 },
+      { name: "Cable glute kickback", dose: "3 × 12 each leg", how: "Face the CENTR and kick one leg back, squeezing the glute at the end.", rest: 60 },
+      { name: "Ab roller hamstring roll", dose: "3 × 10 each leg", how: "Sit or lie down, place the ab roller under one leg, and roll it along the hamstring.", rest: 60 },
+      { name: "Sole elliptical, easy", dose: "3 minutes", how: "Ride the Sole elliptical at an easy pace for three minutes.", rest: 0 }
+    ]
+  },
+  {
+    id: "core",
+    title: "Day 3 · Core and conditioning",
+    blurb: "Core work, then bike intervals",
+    restStrength: 45,
+    moves: [
+      { name: "Cable crunch", dose: "3 × 12", how: "Kneel at the CENTR, hold the rope by your head, and curl your ribs toward your hips.", rest: 45 },
+      { name: "Dead bug", dose: "3 × 8 each side", how: "On your back, lower the opposite arm and leg while your low back stays down.", rest: 45 },
+      { name: "Plank", dose: "3 × 30 seconds", how: "Forearms under shoulders, body straight, and hold without sagging.", rest: 45 },
+      { name: "Medicine-ball woodchop", dose: "3 × 10 each side", how: "Swing the 10 lb ball from high on one side down across to the opposite hip, or use a cable.", rest: 45 },
+      { name: "Stability-ball rollout", dose: "3 × 8", how: "Kneel, hands on the gray ball, roll it forward, then pull back.", rest: 45 },
+      { name: "Ab-wheel rollout", dose: "3 × 8", how: "Kneel, grip the roller handles, roll out until your body is long, then pull back without letting your low back sag.", rest: 45 },
+      { name: "Air bike intervals", dose: "4 rounds · 30s harder / 30s easy", how: "On the Schwinn, push harder for 30 seconds, then pedal easy for 30 seconds, four times.", rest: 0 }
+    ]
+  }
+];
+
+
+const ART = {
+  "Lat pulldown": "art/lat-pulldown.png",
+  "Seated cable row": "art/seated-row.png",
+  "Dumbbell bench or floor press": "art/db-press.png",
+  "Cable chest fly": "art/cable-fly.png",
+  "Dumbbell shoulder press": "art/shoulder-press.png",
+  "Cable face pull": "art/face-pull.png",
+  "Air bike, easy": "art/air-bike.png",
+  "Goblet squat": "art/goblet-squat.png",
+  "Dumbbell Romanian deadlift": "art/rdl.png",
+  "Reverse lunge": "art/reverse-lunge.png",
+  "Step-up": "art/step-up.png",
+  "Cable glute kickback": "art/glute-kickback.png",
+  "Ab roller hamstring roll": "art/hamstring-roll.png",
+  "Sole elliptical, easy": "art/elliptical.png",
+  "Cable crunch": "art/cable-crunch.png",
+  "Dead bug": "art/dead-bug.png",
+  "Plank": "art/plank.png",
+  "Medicine-ball woodchop": "art/woodchop.png",
+  "Stability-ball rollout": "art/stability-rollout.png",
+  "Ab-wheel rollout": "art/ab-wheel.png",
+  "Air bike intervals": "art/air-bike-intervals.png"
+};
+
+function fig(name) {
+  const src = ART[name];
+  if (!src) return "";
+  return '<img class="fig" src="' + src + '" alt="Illustration of ' + name + '">';
+}
+
+const KEY = "tony-home-gym-plan-v1";
+
+function load() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return { done: {}, cursor: {} };
+    const data = JSON.parse(raw);
+    return { done: data.done || {}, cursor: data.cursor || {} };
+  } catch (e) {
+    return { done: {}, cursor: {} };
+  }
+}
+function save(state) {
+  localStorage.setItem(KEY, JSON.stringify(state));
+}
+
+const state = load();
+let screen = "home";
+let dayId = null;
+let index = 0;
+let remaining = 0;
+let timerId = null;
+let running = false;
+let drawn = null;
+
+function pool() {
+  const list = [];
+  DAYS.forEach(d => {
+    d.moves.forEach(m => list.push({ day: d.title, name: m.name, dose: m.dose, how: m.how, rest: m.rest || 0 }));
+  });
+  return list;
+}
+
+function drawOne() {
+  const list = pool();
+  let pick = list[Math.floor(Math.random() * list.length)];
+  if (list.length > 1 && drawn && pick.name === drawn.name && pick.day === drawn.day) {
+    const others = list.filter(m => !(m.name === drawn.name && m.day === drawn.day));
+    pick = others[Math.floor(Math.random() * others.length)];
+  }
+  drawn = pick;
+  screen = "draw";
+}
+
+function $(sel) { return document.querySelector(sel); }
+function dayById(id) { return DAYS.find(d => d.id === id); }
+function pad(n) { return String(n).padStart(2, "0"); }
+function fmt(sec) { return pad(Math.floor(sec / 60)) + ":" + pad(sec % 60); }
+
+function stopTimer() {
+  if (timerId) clearInterval(timerId);
+  timerId = null;
+  running = false;
+}
+
+function render() {
+  const root = $("#app");
+  stopTimer();
+  if (screen === "home") root.innerHTML = homeHtml();
+  else if (screen === "move") root.innerHTML = moveHtml();
+  else if (screen === "draw") root.innerHTML = drawHtml();
+  else root.innerHTML = finishHtml();
+  bind();
+}
+
+function homeHtml() {
+  const cards = DAYS.map(d => {
+    const mark = state.done[d.id] ? '<span class="badge">Done</span>' : "";
+    return '<button class="day-btn" data-day="' + d.id + '"><div><strong>' + d.title + '</strong><span>' + d.blurb + '</span></div>' + mark + '</button>';
+  }).join("");
+  return '<h1>This week</h1><p class="sub">Pick a day. One exercise at a time.</p>' +
+    '<button class="day-btn draw-btn" id="draw">Draw an exercise</button>' +
+    '<div class="days">' + cards + '</div>';
+}
+
+function moveHtml() {
+  const day = dayById(dayId);
+  const m = day.moves[index];
+  remaining = m.rest || 0;
+  const restBlock = remaining
+    ? '<p class="rest-label">Rest after this set</p><p class="timer" id="clock">' + fmt(remaining) + '</p><div class="row"><button class="big" id="start">Start rest</button><button class="ghost" id="skip">Skip rest</button></div>'
+    : '<p class="rest-label">No rest after this one.</p><div class="row"><button class="big" id="next">Next</button></div>';
+  return '<button class="back" id="back">← Days</button>' +
+    '<div class="card">' +
+    '<p class="progress">' + day.title + ' · ' + (index + 1) + ' of ' + day.moves.length + '</p>' +
+    fig(m.name) +
+    '<h2 class="name">' + m.name + '</h2>' +
+    '<p class="dose">' + m.dose + '</p>' +
+    '<p class="how">' + m.how + '</p>' +
+    restBlock +
+    '<div class="row" style="margin-top:10px"><button class="ghost" id="next2">Next exercise</button></div>' +
+    '</div>';
+}
+
+function drawHtml() {
+  const m = drawn;
+  remaining = m.rest || 0;
+  const restBlock = remaining
+    ? '<p class="rest-label">Rest after this set</p><p class="timer" id="clock">' + fmt(remaining) + '</p><div class="row"><button class="big" id="start">Start rest</button><button class="ghost" id="skip">Skip rest</button></div>'
+    : '<p class="rest-label">No rest on this one.</p>';
+  return '<button class="back" id="back">← Days</button>' +
+    '<div class="card">' +
+    '<p class="progress">Lottery · ' + m.day + '</p>' +
+    '<p class="pick-line">This is the one to do.</p>' +
+    fig(m.name) +
+    '<h2 class="name">' + m.name + '</h2>' +
+    '<p class="dose">' + m.dose + '</p>' +
+    '<p class="how">' + m.how + '</p>' +
+    restBlock +
+    '<div class="row" style="margin-top:10px"><button class="big" id="again">Draw again</button></div>' +
+    '</div>';
+}
+
+function finishHtml() {
+  const day = dayById(dayId);
+  const already = !!state.done[day.id];
+  return '<button class="back" id="back">← Days</button>' +
+    '<div class="card"><p class="progress">' + day.title + '</p>' +
+    '<h2 class="name">That’s the day.</h2>' +
+    '<p class="how">You went through every exercise.</p>' +
+    (already ? '<p class="done-mark">Marked done.</p>' : '') +
+    '<button class="big" id="mark" style="width:100%">' + (already ? 'Done' : 'Mark day done') + '</button></div>';
+}
+
+function goNext() {
+  const day = dayById(dayId);
+  stopTimer();
+  if (index + 1 >= day.moves.length) {
+    screen = "finish";
+  } else {
+    index += 1;
+    state.cursor[dayId] = index;
+    save(state);
+    screen = "move";
+  }
+  render();
+}
+
+function startRest() {
+  if (running) return;
+  const clock = document.getElementById("clock");
+  if (!clock) return;
+  running = true;
+  const btn = document.getElementById("start");
+  if (btn) btn.textContent = "Resting";
+  timerId = setInterval(function () {
+    remaining -= 1;
+    if (remaining <= 0) {
+      remaining = 0;
+      clock.textContent = "00:00";
+      stopTimer();
+      if (btn) btn.textContent = "Rest done";
+      return;
+    }
+    clock.textContent = fmt(remaining);
+  }, 1000);
+}
+
+function bind() {
+  document.querySelectorAll("[data-day]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      dayId = btn.getAttribute("data-day");
+      index = 0;
+      screen = "move";
+      render();
+    });
+  });
+  const draw = document.getElementById("draw");
+  if (draw) draw.addEventListener("click", () => { drawOne(); render(); });
+  const again = document.getElementById("again");
+  if (again) again.addEventListener("click", () => { drawOne(); render(); });
+  const back = document.getElementById("back");
+  if (back) back.addEventListener("click", () => { screen = "home"; render(); });
+  const start = document.getElementById("start");
+  if (start) start.addEventListener("click", startRest);
+  const skip = document.getElementById("skip");
+  if (skip) skip.addEventListener("click", () => { stopTimer(); const c = document.getElementById("clock"); if (c) { remaining = 0; c.textContent = "00:00"; } });
+  const next = document.getElementById("next");
+  if (next) next.addEventListener("click", goNext);
+  const next2 = document.getElementById("next2");
+  if (next2) next2.addEventListener("click", goNext);
+  const mark = document.getElementById("mark");
+  if (mark) mark.addEventListener("click", () => {
+    state.done[dayId] = new Date().toISOString();
+    state.cursor[dayId] = 0;
+    save(state);
+    screen = "home";
+    render();
+  });
+}
+
+render();
+</script>
+</body>
+</html>
