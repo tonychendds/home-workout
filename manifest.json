@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Tony's home gym plan",
-  "short_name": "Home workout",
+  "name": "Workout",
+  "short_name": "Workout",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
