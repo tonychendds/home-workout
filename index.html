@@ -590,6 +590,7 @@ function render() {
   stopScan();
   clearPfPreview();
   if (screen === "home") root.innerHTML = homeHtml();
+  else if (screen === "workout") root.innerHTML = workoutHtml();
   else if (screen === "move") root.innerHTML = moveHtml();
   else if (screen === "draw") root.innerHTML = drawHtml();
   else if (screen === "add") root.innerHTML = addHtml();
@@ -601,11 +602,16 @@ function render() {
 }
 
 function homeHtml() {
+  return '<button class="day-btn pf-home" type="button" id="pf"><div><strong>Planet Fitness</strong><span>Log weight, date, and machine videos</span></div></button>' +
+    '<button class="day-btn pf-home" type="button" id="hw"><div><strong>Home Workout</strong><span>Three-day plan, lottery, and timer</span></div></button>';
+}
+
+function workoutHtml() {
   const cards = DAYS.map(function (d) {
     const mark = state.done[d.id] ? '<span class="badge">Done</span>' : "";
     return '<button class="day-btn" type="button" data-day="' + d.id + '"><div><strong>' + d.title + '</strong><span>' + d.blurb + '</span></div>' + mark + '</button>';
   }).join("");
-  return '<button class="day-btn pf-home" type="button" id="pf"><div><strong>Planet Fitness</strong><span>Log weight, date, and machine videos</span></div></button>' +
+  return '<button class="back" type="button" id="back">← Home</button>' +
     '<h1>Home Workout</h1><p class="sub">Pick a day. One exercise at a time.</p>' +
     '<button class="day-btn draw-btn" type="button" id="draw">Draw an exercise</button>' +
     '<div class="days">' + cards + '</div>' +
@@ -641,7 +647,7 @@ function moveHtml() {
     ? '<p class="rest-label">Rest after this set</p><p class="timer" id="clock">' + fmt(remaining) + '</p><div class="row"><button class="big" type="button" id="start">Start rest</button><button class="ghost" type="button" id="skip">Skip rest</button></div>'
     : '<p class="rest-label">No rest after this one.</p><div class="row"><button class="big" type="button" id="next">Next</button></div>';
   const foot = restBlock + '<div class="row" style="margin-top:10px"><button class="ghost" type="button" id="next2">Next exercise</button></div>';
-  return '<button class="back" type="button" id="back">← Days</button>' +
+  return '<button class="back" type="button" id="back">← Home Workout</button>' +
     exerciseCard(esc(day.title) + " · " + (index + 1) + " of " + moves.length, m, foot);
 }
 
@@ -652,14 +658,14 @@ function drawHtml() {
     ? '<p class="rest-label">Rest after this set</p><p class="timer" id="clock">' + fmt(remaining) + '</p><div class="row"><button class="big" type="button" id="start">Start rest</button><button class="ghost" type="button" id="skip">Skip rest</button></div>'
     : '<p class="rest-label">No rest on this one.</p>';
   const foot = rest + '<div class="row" style="margin-top:10px"><button class="big" type="button" id="again">Draw again</button></div>';
-  return '<button class="back" type="button" id="back">← Days</button>' +
+  return '<button class="back" type="button" id="back">← Home Workout</button>' +
     exerciseCard("Lottery · " + esc(m.day), m, foot, '<p class="pick-line">This is the one to do.</p>');
 }
 
 function finishHtml() {
   const day = dayById(dayId);
   const already = !!state.done[day.id];
-  return '<button class="back" type="button" id="back">← Days</button>' +
+  return '<button class="back" type="button" id="back">← Home Workout</button>' +
     '<div class="card"><p class="progress">' + day.title + '</p>' +
     '<h2 class="name">That’s the day.</h2>' +
     '<p class="how">You went through every exercise.</p>' +
@@ -679,7 +685,7 @@ function addHtml() {
   const list = customs.length
     ? '<h2 class="yours">Your exercises</h2>' + rows
     : "";
-  return '<button class="back" type="button" id="back">← Days</button>' +
+  return '<button class="back" type="button" id="back">← Home Workout</button>' +
     '<div class="card">' +
     '<p class="progress">Add an exercise</p>' +
     '<h2 class="name">Your own move</h2>' +
@@ -1116,7 +1122,7 @@ function pfHtml() {
     ? '<div class="lightbox" id="pf-lightbox"><button type="button" class="lightbox-close" id="pf-lightbox-close">Close</button><img alt="" src="' + pfViewer + '"></div>'
     : "";
   return viewer +
-    '<button class="back" type="button" id="back">← Days</button>' +
+    '<button class="back" type="button" id="back">← Home</button>' +
     '<h1>Planet Fitness</h1><p class="sub">Leg, Hip, Ab, Back, and Upper body. Saved on this phone.</p>' +
     sections;
 }
@@ -1348,7 +1354,12 @@ function bind() {
   const add = document.getElementById("add");
   if (add) add.addEventListener("click", function () { screen = "add"; render(); });
   const back = document.getElementById("back");
-  if (back) back.addEventListener("click", function () { screen = "home"; render(); });
+  if (back) back.addEventListener("click", function () {
+    screen = (screen === "move" || screen === "draw" || screen === "add" || screen === "finish") ? "workout" : "home";
+    render();
+  });
+  const hw = document.getElementById("hw");
+  if (hw) hw.addEventListener("click", function () { screen = "workout"; render(); });
   const start = document.getElementById("start");
   if (start) start.addEventListener("click", startRest);
   const skip = document.getElementById("skip");
@@ -1366,7 +1377,7 @@ function bind() {
     state.done[dayId] = new Date().toISOString();
     state.cursor[dayId] = 0;
     save(state);
-    screen = "home";
+    screen = "workout";
     render();
   });
   const form = document.getElementById("add-form");
@@ -1473,7 +1484,7 @@ function bind() {
       }
       customs = next;
       if (drawn && drawn.id === id) drawn = null;
-      if (screen === "move" || screen === "draw") screen = "home";
+      if (screen === "move" || screen === "draw") screen = "workout";
       render();
     });
   });
