@@ -7,7 +7,8 @@
 <link rel="icon" href="icon.png">
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#121418">
-<title>Tony's home gym plan</title>
+<meta name="apple-mobile-web-app-title" content="Workout">
+<title>Workout</title>
 <style>
   :root {
     --bg: #121418;
@@ -35,15 +36,18 @@
     margin: 0 auto;
     padding: 16px 16px 40px;
   }
-  header.top {
-    margin-bottom: 16px;
+  .hero {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 14px;
+    margin: 0 0 16px;
   }
-  .gear, .disclaimer {
-    margin: 0;
-    font-size: 13px;
+  .page-note {
+    margin: 22px 0 0;
+    font-size: 12px;
     color: var(--muted);
   }
-  .disclaimer { margin-top: 6px; }
   .credits { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
   .credits summary { cursor: pointer; }
   .credits ul { margin: 6px 0 0; padding-left: 18px; }
@@ -316,22 +320,6 @@
 </head>
 <body>
 <div class="wrap">
-  <header class="top">
-    <p class="gear">CENTR cables, hex dumbbells 5–35 lb, PROIRON ab roller, jump rope, 10 lb med ball, stability ball, yellow band, Sole elliptical, Schwinn Airdyne, Yes4All step.</p>
-    <p class="disclaimer">General home plan, not medical advice. Stop if something hurts.</p>
-    <details class="credits">
-      <summary>Photo credits (Wikimedia Commons)</summary>
-      <ul>
-        <li>Lat pulldown, elliptical: Tyler Read, CC BY 2.0</li>
-        <li>Easy bike: Farida Takenzo, CC BY-SA 4.0</li>
-        <li>Dumbbell press, goblet squat, reverse lunge: PTPioneer, CC BY 2.0</li>
-        <li>Cable fly, ab-wheel rollout: Nenad Stojkovic, CC BY 2.0</li>
-        <li>Shoulder press: Trainer Academy, CC BY-SA 3.0</li>
-        <li>Plank: Shixart1985, CC BY 2.0</li>
-        <li>Bike intervals: Klimek.6, public domain</li>
-      </ul>
-    </details>
-  </header>
   <main id="app"></main>
 </div>
 <script>
@@ -602,7 +590,8 @@ function render() {
 }
 
 function homeHtml() {
-  return '<button class="day-btn pf-home" type="button" id="pf"><div><strong>Planet Fitness</strong><span>Log weight, date, and machine videos</span></div></button>' +
+  return '<img class="hero" src="art/home-hero.jpg" alt="A man lunging with dumbbells in a dark gym">' +
+    '<button class="day-btn pf-home" type="button" id="pf"><div><strong>Planet Fitness</strong><span>Log weight, date, and machine videos</span></div></button>' +
     '<button class="day-btn pf-home" type="button" id="hw"><div><strong>Home Workout</strong><span>Three-day plan, lottery, and timer</span></div></button>';
 }
 
@@ -615,7 +604,17 @@ function workoutHtml() {
     '<h1>Home Workout</h1><p class="sub">Pick a day. One exercise at a time.</p>' +
     '<button class="day-btn draw-btn" type="button" id="draw">Draw an exercise</button>' +
     '<div class="days">' + cards + '</div>' +
-    '<button class="day-btn" type="button" id="add" style="margin-top:12px"><div><strong>Add an exercise</strong><span>Saved on this phone</span></div></button>';
+    '<button class="day-btn" type="button" id="add" style="margin-top:12px"><div><strong>Add an exercise</strong><span>Saved on this phone</span></div></button>' +
+    '<p class="page-note">General home plan, not medical advice. Stop if something hurts.</p>' +
+    '<details class="credits"><summary>Photo credits (Wikimedia Commons)</summary><ul>' +
+    '<li>Lat pulldown, elliptical: Tyler Read, CC BY 2.0</li>' +
+    '<li>Easy bike: Farida Takenzo, CC BY-SA 4.0</li>' +
+    '<li>Dumbbell press, goblet squat, reverse lunge: PTPioneer, CC BY 2.0</li>' +
+    '<li>Cable fly, ab-wheel rollout: Nenad Stojkovic, CC BY 2.0</li>' +
+    '<li>Shoulder press: Trainer Academy, CC BY-SA 3.0</li>' +
+    '<li>Plank: Shixart1985, CC BY 2.0</li>' +
+    '<li>Bike intervals: Klimek.6, public domain</li>' +
+    '</ul></details>';
 }
 
 function exerciseCard(progress, m, foot, lead) {

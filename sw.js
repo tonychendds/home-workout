@@ -1,4 +1,4 @@
-/* Navigations reload so a published update, including the Home Workout card, is what the phone opens. */
+/* Navigations reload so a published update, including the home photo and the Workout name, is what the phone opens. */
 self.addEventListener("install", function (event) {
   event.waitUntil(self.skipWaiting());
 });
