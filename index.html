@@ -227,6 +227,38 @@
     flex: none;
   }
   .yours { font-size: 20px; margin: 22px 0 4px; }
+  .pf-home {
+    width: 100%;
+    margin: 0 0 16px;
+    background: #1a1830;
+    border-color: #3d3a62;
+  }
+  .pf-home strong { color: #d7d4ff; }
+  .pf-section { margin-top: 12px; }
+  .pf-entry { border-top: 1px solid var(--line); padding: 14px 0 6px; }
+  .pf-entry h3 { margin: 0 0 4px; font-size: 18px; }
+  .pf-meta { color: var(--muted); font-size: 15px; margin: 0 0 4px; }
+  .pf-progress { color: var(--accent); font-size: 14px; margin: 0 0 8px; }
+  .video-link { color: var(--warn); font-weight: 700; font-size: 16px; }
+  .pf-actions { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; }
+  .pf-actions button {
+    background: transparent;
+    color: var(--text);
+    font-weight: 700;
+    min-height: 44px;
+    padding: 8px 0;
+  }
+  .pf-actions .danger { color: var(--danger); }
+  .scan-video {
+    display: block;
+    width: 100%;
+    max-height: 240px;
+    object-fit: cover;
+    border-radius: 12px;
+    background: #000;
+    margin: 0 0 10px;
+  }
+  .empty-note { color: var(--muted); font-size: 15px; margin: 8px 0 0; }
 </style>
 </head>
 <body>
@@ -502,12 +534,16 @@ function stopTimer() {
 function render() {
   const root = $("#app");
   stopTimer();
+  stopScan();
   if (screen === "home") root.innerHTML = homeHtml();
   else if (screen === "move") root.innerHTML = moveHtml();
   else if (screen === "draw") root.innerHTML = drawHtml();
   else if (screen === "add") root.innerHTML = addHtml();
+  else if (screen === "pf") root.innerHTML = pfHtml();
   else root.innerHTML = finishHtml();
   bind();
+  const opened = document.getElementById("pf-form");
+  if (opened && opened.scrollIntoView) opened.scrollIntoView({ block: "center" });
 }
 
 function homeHtml() {
@@ -515,7 +551,8 @@ function homeHtml() {
     const mark = state.done[d.id] ? '<span class="badge">Done</span>' : "";
     return '<button class="day-btn" type="button" data-day="' + d.id + '"><div><strong>' + d.title + '</strong><span>' + d.blurb + '</span></div>' + mark + '</button>';
   }).join("");
-  return '<h1>This week</h1><p class="sub">Pick a day. One exercise at a time.</p>' +
+  return '<button class="day-btn pf-home" type="button" id="pf"><div><strong>Planet Fitness</strong><span>Log weight, date, and machine videos</span></div></button>' +
+    '<h1>This week</h1><p class="sub">Pick a day. One exercise at a time.</p>' +
     '<button class="day-btn draw-btn" type="button" id="draw">Draw an exercise</button>' +
     '<div class="days">' + cards + '</div>' +
     '<button class="day-btn" type="button" id="add" style="margin-top:12px"><div><strong>Add an exercise</strong><span>Saved on this phone</span></div></button>';
@@ -697,6 +734,320 @@ async function onAdd(ev) {
   render();
 }
 
+const PF_KEY = "tony-planet-fitness-v1";
+const PF_SECTIONS = [
+  { id: "leg", label: "Leg" },
+  { id: "ab", label: "Ab" },
+  { id: "back", label: "Back" },
+  { id: "upper", label: "Upper body" }
+];
+
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+}
+
+function cleanDate(value) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!m) return "";
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const day = Number(m[3]);
+  const d = new Date(y, mo - 1, day);
+  if (d.getFullYear() !== y || d.getMonth() !== mo - 1 || d.getDate() !== day) return "";
+  return m[0];
+}
+
+function prettyDate(iso) {
+  const parts = String(iso || "").split("-");
+  if (parts.length !== 3) return iso || "";
+  const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function weightText(n) {
+  const rounded = Math.round(Number(n) * 10) / 10;
+  return String(rounded);
+}
+
+function cleanWeight(value) {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  if (!isFinite(n) || n < 0 || n > 2000) return null;
+  return Math.round(n * 10) / 10;
+}
+
+function cleanLink(value) {
+  let s = String(value || "").trim();
+  if (!s) return "";
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(s)) s = "https://" + s;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.href;
+  } catch (e) {
+    return null;
+  }
+}
+
+function loadPf() {
+  try {
+    const raw = localStorage.getItem(PF_KEY);
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data)) return [];
+    return data.filter(function (e) {
+      return e && e.id && clean(e.name, 80) && PF_SECTIONS.some(function (s) { return s.id === e.section; }) && cleanDate(e.date) && cleanWeight(e.weight) !== null;
+    }).map(function (e) {
+      const link = cleanLink(e.link);
+      return {
+        id: String(e.id),
+        section: e.section,
+        name: clean(e.name, 80),
+        weight: cleanWeight(e.weight),
+        date: cleanDate(e.date),
+        link: link || "",
+        created: typeof e.created === "number" ? e.created : 0
+      };
+    });
+  } catch (e) {
+    return [];
+  }
+}
+
+function savePf(list) {
+  localStorage.setItem(PF_KEY, JSON.stringify(list));
+}
+
+let pfLogs = loadPf();
+let pfForm = null;
+let qrScan = false;
+let scanStream = null;
+let scanTimer = null;
+
+function stopScan() {
+  if (scanTimer) clearInterval(scanTimer);
+  scanTimer = null;
+  if (scanStream) {
+    scanStream.getTracks().forEach(function (track) { track.stop(); });
+    scanStream = null;
+  }
+}
+
+function pfSectionLabel(id) {
+  const section = PF_SECTIONS.find(function (s) { return s.id === id; });
+  return section ? section.label : "";
+}
+
+function pfSorted(sectionId) {
+  return pfLogs.filter(function (e) { return e.section === sectionId; }).sort(function (a, b) {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    return b.created - a.created;
+  });
+}
+
+function earlierSame(entry, list) {
+  const name = entry.name.toLowerCase();
+  let seen = false;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].id === entry.id) {
+      seen = true;
+      continue;
+    }
+    if (!seen) continue;
+    if (list[i].name.toLowerCase() === name) return list[i];
+  }
+  return null;
+}
+
+function progressLine(entry, prev) {
+  if (!prev) return "";
+  const diff = Math.round((entry.weight - prev.weight) * 10) / 10;
+  const when = prettyDate(prev.date);
+  if (diff > 0) return "Up " + weightText(diff) + " lb from " + when;
+  if (diff < 0) return "Down " + weightText(Math.abs(diff)) + " lb from " + when;
+  return "Same weight as " + when;
+}
+
+function pfFormHtml(section) {
+  if (!pfForm || pfForm.section !== section.id) return "";
+  const editing = !!pfForm.id;
+  const title = editing ? "Edit workout" : (pfForm.again ? "Log again" : "Add a workout");
+  const scan = qrScan
+    ? '<button class="ghost" type="button" id="scan-qr" style="width:100%;margin:0 0 14px">Scan QR</button>' +
+      '<div id="scanner" class="hidden"><video id="scan-video" class="scan-video" playsinline autoplay muted></video>' +
+      '<button class="ghost" type="button" id="scan-stop" style="width:100%;margin:0 0 14px">Stop camera</button></div>'
+    : "";
+  return '<p class="progress" style="margin-top:12px">' + title + '</p>' +
+    '<p class="form-error" id="pf-error"></p>' +
+    '<form id="pf-form">' +
+    '<label class="field">Workout name<input name="name" required maxlength="80" autocomplete="off" value="' + esc(pfForm.name) + '"></label>' +
+    '<label class="field">Weight (lb)<input name="weight" type="number" inputmode="decimal" min="0" max="2000" step="0.5" required value="' + esc(pfForm.weight) + '"></label>' +
+    '<label class="field">Date<input name="date" type="date" required value="' + esc(pfForm.date) + '"></label>' +
+    '<label class="field">Video link<span class="hint">Paste the link from the machine QR code.</span><input name="link" type="text" inputmode="url" placeholder="https://" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + esc(pfForm.link) + '"></label>' +
+    scan +
+    '<div class="row"><button class="big" type="submit">' + (editing ? "Save changes" : "Save workout") + '</button>' +
+    '<button class="ghost" type="button" id="pf-cancel">Cancel</button></div>' +
+    '</form>';
+}
+
+function pfEntryHtml(entry, list) {
+  const prev = earlierSame(entry, list);
+  const change = progressLine(entry, prev);
+  const link = entry.link
+    ? '<a class="video-link" href="' + esc(entry.link) + '" target="_blank" rel="noopener noreferrer">Watch video</a>'
+    : "";
+  return '<article class="pf-entry">' +
+    '<h3>' + esc(entry.name) + '</h3>' +
+    '<p class="pf-meta">' + esc(prettyDate(entry.date)) + ' · ' + esc(weightText(entry.weight)) + ' lb</p>' +
+    (change ? '<p class="pf-progress">' + esc(change) + '</p>' : '') +
+    link +
+    '<div class="pf-actions">' +
+    '<button type="button" data-pf-edit="' + esc(entry.id) + '">Edit</button>' +
+    '<button type="button" data-pf-again="' + esc(entry.id) + '">Log again</button>' +
+    '<button type="button" class="danger" data-pf-delete="' + esc(entry.id) + '">Delete</button>' +
+    '</div></article>';
+}
+
+function pfHtml() {
+  const sections = PF_SECTIONS.map(function (section) {
+    const list = pfSorted(section.id);
+    const formOpen = pfForm && pfForm.section === section.id;
+    const adder = formOpen
+      ? pfFormHtml(section)
+      : '<button class="ghost" type="button" data-pf-add="' + section.id + '" style="width:100%;margin-top:8px">Add a workout</button>';
+    const entries = list.map(function (entry) { return pfEntryHtml(entry, list); }).join("");
+    const empty = !list.length && !formOpen ? '<p class="empty-note">Nothing logged yet.</p>' : "";
+    return '<section class="card pf-section"><h2 class="name" style="font-size:24px">' + section.label + '</h2>' +
+      adder + empty + entries + '</section>';
+  }).join("");
+  return '<button class="back" type="button" id="back">← Days</button>' +
+    '<h1>Planet Fitness</h1><p class="sub">Leg, Ab, Back, and Upper body. Saved on this phone.</p>' +
+    sections;
+}
+
+function openPfForm(sectionId, seed) {
+  pfForm = {
+    section: sectionId,
+    id: seed && seed.id ? seed.id : "",
+    again: !!(seed && seed.again),
+    name: seed && seed.name ? seed.name : "",
+    weight: seed && seed.weight != null && seed.weight !== "" ? String(seed.weight) : "",
+    date: seed && seed.date ? seed.date : todayISO(),
+    link: seed && seed.link ? seed.link : ""
+  };
+  screen = "pf";
+  render();
+}
+
+function onPfSave(ev) {
+  ev.preventDefault();
+  const form = ev.target;
+  const err = document.getElementById("pf-error");
+  const name = clean(form.name.value, 80);
+  const weight = cleanWeight(form.weight.value);
+  const date = cleanDate(form.date.value);
+  const link = cleanLink(form.link.value);
+  if (!name) {
+    err.textContent = "Add a workout name.";
+    return;
+  }
+  if (weight === null) {
+    err.textContent = "Add the weight in pounds.";
+    return;
+  }
+  if (!date) {
+    err.textContent = "Pick a date.";
+    return;
+  }
+  if (link === null) {
+    err.textContent = "That video link needs to be a web address.";
+    return;
+  }
+  const section = pfForm && pfForm.section;
+  if (!pfSectionLabel(section)) return;
+  let next;
+  if (pfForm.id) {
+    next = pfLogs.map(function (entry) {
+      if (entry.id !== pfForm.id) return entry;
+      return { id: entry.id, section: section, name: name, weight: weight, date: date, link: link, created: entry.created };
+    });
+  } else {
+    next = pfLogs.concat([{
+      id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      section: section,
+      name: name,
+      weight: weight,
+      date: date,
+      link: link,
+      created: Date.now()
+    }]);
+  }
+  try {
+    savePf(next);
+  } catch (e) {
+    err.textContent = "This phone is out of room for more logs.";
+    return;
+  }
+  pfLogs = next;
+  pfForm = null;
+  render();
+}
+
+async function startScan() {
+  const err = document.getElementById("pf-error");
+  const box = document.getElementById("scanner");
+  const video = document.getElementById("scan-video");
+  const input = document.querySelector("#pf-form input[name=link]");
+  if (!qrScan || !box || !video || !input || !navigator.mediaDevices) {
+    if (err) err.textContent = "This phone can't scan here. Paste the link.";
+    return;
+  }
+  stopScan();
+  box.classList.remove("hidden");
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+  } catch (e) {
+    if (err) err.textContent = "Couldn't use the camera. Paste the link instead.";
+    box.classList.add("hidden");
+    return;
+  }
+  if (!document.getElementById("scan-video")) {
+    stream.getTracks().forEach(function (track) { track.stop(); });
+    return;
+  }
+  scanStream = stream;
+  video.srcObject = scanStream;
+  try { await video.play(); } catch (e) {}
+  const detector = new BarcodeDetector({ formats: ["qr_code"] });
+  scanTimer = setInterval(async function () {
+    if (!scanStream || video.readyState < 2) return;
+    let codes = [];
+    try { codes = await detector.detect(video); } catch (e) { return; }
+    if (!codes || !codes.length) return;
+    const raw = String(codes[0].rawValue || "").trim();
+    const url = cleanLink(raw);
+    if (url) {
+      input.value = url;
+      if (err) err.textContent = "";
+      stopScan();
+      box.classList.add("hidden");
+      return;
+    }
+    input.value = raw;
+    if (err) err.textContent = "That code isn't a link. Paste the video URL instead.";
+  }, 400);
+}
+
+function detectQr() {
+  if (!("BarcodeDetector" in window) || !BarcodeDetector.getSupportedFormats) return;
+  BarcodeDetector.getSupportedFormats().then(function (formats) {
+    qrScan = formats.indexOf("qr_code") !== -1;
+    if (screen === "pf" && !pfForm && !scanStream) render();
+  }).catch(function () {});
+}
+
 function bind() {
   document.querySelectorAll("[data-day]").forEach(function (btn) {
     btn.addEventListener("click", function () {
@@ -736,6 +1087,50 @@ function bind() {
   });
   const form = document.getElementById("add-form");
   if (form) form.addEventListener("submit", onAdd);
+  const pf = document.getElementById("pf");
+  if (pf) pf.addEventListener("click", function () { pfForm = null; screen = "pf"; render(); });
+  document.querySelectorAll("[data-pf-add]").forEach(function (btn) {
+    btn.addEventListener("click", function () { openPfForm(btn.getAttribute("data-pf-add")); });
+  });
+  document.querySelectorAll("[data-pf-edit]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const entry = pfLogs.find(function (e) { return e.id === btn.getAttribute("data-pf-edit"); });
+      if (!entry) return;
+      openPfForm(entry.section, entry);
+    });
+  });
+  document.querySelectorAll("[data-pf-again]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const entry = pfLogs.find(function (e) { return e.id === btn.getAttribute("data-pf-again"); });
+      if (!entry) return;
+      openPfForm(entry.section, { again: true, name: entry.name, link: entry.link, date: todayISO(), weight: "" });
+    });
+  });
+  document.querySelectorAll("[data-pf-delete]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const id = btn.getAttribute("data-pf-delete");
+      const entry = pfLogs.find(function (e) { return e.id === id; });
+      if (!entry) return;
+      if (!window.confirm("Delete this log of " + entry.name + "?")) return;
+      const next = pfLogs.filter(function (e) { return e.id !== id; });
+      try { savePf(next); } catch (e) { return; }
+      pfLogs = next;
+      if (pfForm && pfForm.id === id) pfForm = null;
+      render();
+    });
+  });
+  const pfFormEl = document.getElementById("pf-form");
+  if (pfFormEl) pfFormEl.addEventListener("submit", onPfSave);
+  const pfCancel = document.getElementById("pf-cancel");
+  if (pfCancel) pfCancel.addEventListener("click", function () { pfForm = null; render(); });
+  const scanQr = document.getElementById("scan-qr");
+  if (scanQr) scanQr.addEventListener("click", startScan);
+  const scanStop = document.getElementById("scan-stop");
+  if (scanStop) scanStop.addEventListener("click", function () {
+    stopScan();
+    const box = document.getElementById("scanner");
+    if (box) box.classList.add("hidden");
+  });
   document.querySelectorAll("[data-remove]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       const id = btn.getAttribute("data-remove");
@@ -756,6 +1151,7 @@ function bind() {
   });
 }
 
+detectQr();
 render();
 </script>
 <script>

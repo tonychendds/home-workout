@@ -8,5 +8,6 @@ self.addEventListener("activate", function (event) {
 
 self.addEventListener("fetch", function (event) {
   if (event.request.method !== "GET") return;
-  event.respondWith(fetch(event.request));
+  if (event.request.mode !== "navigate") return;
+  event.respondWith(fetch(event.request, { cache: "reload" }));
 });
