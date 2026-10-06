@@ -1,3 +1,4 @@
+/* Navigations reload so a published update is what the phone opens. */
 self.addEventListener("install", function (event) {
   event.waitUntil(self.skipWaiting());
 });

@@ -259,6 +259,59 @@
     margin: 0 0 10px;
   }
   .empty-note { color: var(--muted); font-size: 15px; margin: 8px 0 0; }
+  .pf-thumb {
+    display: block;
+    width: 112px;
+    height: 112px;
+    padding: 0;
+    margin: 0 0 8px;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #10141b;
+  }
+  .pf-thumb img, .pf-photo-now {
+    width: 112px;
+    height: 112px;
+    object-fit: cover;
+    display: block;
+    border-radius: 12px;
+    margin: 0 0 8px;
+    background: #10141b;
+  }
+  .pf-photo-now.hidden { display: none; }
+  .field.check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+  }
+  .field.check input { width: auto; margin: 0; }
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+  .lightbox img {
+    max-width: 100%;
+    max-height: calc(100vh - 80px);
+    border-radius: 12px;
+  }
+  .lightbox-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    min-height: 44px;
+    padding: 8px 14px;
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    font-weight: 700;
+  }
 </style>
 </head>
 <body>
@@ -535,6 +588,7 @@ function render() {
   const root = $("#app");
   stopTimer();
   stopScan();
+  clearPfPreview();
   if (screen === "home") root.innerHTML = homeHtml();
   else if (screen === "move") root.innerHTML = moveHtml();
   else if (screen === "draw") root.innerHTML = drawHtml();
@@ -807,7 +861,9 @@ function loadPf() {
         weight: cleanWeight(e.weight),
         date: cleanDate(e.date),
         link: link || "",
-        created: typeof e.created === "number" ? e.created : 0
+        created: typeof e.created === "number" ? e.created : 0,
+        photoId: typeof e.photoId === "string" ? e.photoId : "",
+        photo: validPhoto(e.photo) ? e.photo : ""
       };
     });
   } catch (e) {
@@ -817,6 +873,127 @@ function loadPf() {
 
 function savePf(list) {
   localStorage.setItem(PF_KEY, JSON.stringify(list));
+}
+
+const PF_DB = "tony-planet-fitness";
+const PF_PHOTO_STORE = "photos";
+let pfPhotoCache = {};
+let pfPreviewUrl = "";
+let pfViewer = "";
+
+function isQuotaError(err) {
+  return !!(err && (err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED" || err.code === 22));
+}
+
+function openPfDb() {
+  return new Promise(function (resolve, reject) {
+    if (!window.indexedDB) {
+      reject(new Error("no-idb"));
+      return;
+    }
+    const req = indexedDB.open(PF_DB, 1);
+    req.onupgradeneeded = function () {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PF_PHOTO_STORE)) db.createObjectStore(PF_PHOTO_STORE);
+    };
+    req.onsuccess = function () { resolve(req.result); };
+    req.onerror = function () { reject(req.error); };
+  });
+}
+
+function dataUrlToBlob(dataUrl) {
+  const parts = String(dataUrl).split(",");
+  const bin = atob(parts[1] || "");
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: "image/jpeg" });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise(function (resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function () { resolve(String(reader.result || "")); };
+    reader.onerror = function () { reject(reader.error); };
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function putPfPhoto(id, dataUrl) {
+  const blob = dataUrlToBlob(dataUrl);
+  const db = await openPfDb();
+  try {
+    await new Promise(function (resolve, reject) {
+      const tx = db.transaction(PF_PHOTO_STORE, "readwrite");
+      tx.objectStore(PF_PHOTO_STORE).put(blob, id);
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { reject(tx.error); };
+      tx.onabort = function () { reject(tx.error || new Error("quota")); };
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function getPfPhoto(id) {
+  const db = await openPfDb();
+  try {
+    const blob = await new Promise(function (resolve, reject) {
+      const tx = db.transaction(PF_PHOTO_STORE, "readonly");
+      const req = tx.objectStore(PF_PHOTO_STORE).get(id);
+      req.onsuccess = function () { resolve(req.result || null); };
+      req.onerror = function () { reject(req.error); };
+    });
+    if (!blob) return "";
+    const url = await blobToDataUrl(blob);
+    return validPhoto(url) ? url : "";
+  } finally {
+    db.close();
+  }
+}
+
+async function deletePfPhoto(id) {
+  if (!id || !window.indexedDB) return;
+  const db = await openPfDb();
+  try {
+    await new Promise(function (resolve, reject) {
+      const tx = db.transaction(PF_PHOTO_STORE, "readwrite");
+      tx.objectStore(PF_PHOTO_STORE).delete(id);
+      tx.oncomplete = function () { resolve(); };
+      tx.onerror = function () { reject(tx.error); };
+    });
+  } finally {
+    db.close();
+  }
+}
+
+function photoStillUsed(id, list) {
+  if (!id) return false;
+  return list.some(function (entry) { return entry.photoId === id; });
+}
+
+async function refreshPfPhotos() {
+  const ids = [];
+  pfLogs.forEach(function (entry) {
+    if (entry.photoId && !pfPhotoCache[entry.photoId]) ids.push(entry.photoId);
+  });
+  await Promise.all(ids.map(async function (id) {
+    try {
+      const url = await getPfPhoto(id);
+      if (url) pfPhotoCache[id] = url;
+    } catch (e) {}
+  }));
+}
+
+function entryPhotoSrc(entry) {
+  if (!entry) return "";
+  if (validPhoto(entry.photo)) return entry.photo;
+  if (entry.photoId && validPhoto(pfPhotoCache[entry.photoId])) return pfPhotoCache[entry.photoId];
+  return "";
+}
+
+function clearPfPreview() {
+  if (pfPreviewUrl) URL.revokeObjectURL(pfPreviewUrl);
+  pfPreviewUrl = "";
 }
 
 let pfLogs = loadPf();
@@ -878,6 +1055,11 @@ function pfFormHtml(section) {
       '<div id="scanner" class="hidden"><video id="scan-video" class="scan-video" playsinline autoplay muted></video>' +
       '<button class="ghost" type="button" id="scan-stop" style="width:100%;margin:0 0 14px">Stop camera</button></div>'
     : "";
+  const current = entryPhotoSrc(pfForm);
+  const currentHtml = current
+    ? '<img class="pf-photo-now" alt="" src="' + current + '">' +
+      '<label class="field check"><input type="checkbox" name="removePhoto"> Remove photo</label>'
+    : "";
   return '<p class="progress" style="margin-top:12px">' + title + '</p>' +
     '<p class="form-error" id="pf-error"></p>' +
     '<form id="pf-form">' +
@@ -886,6 +1068,9 @@ function pfFormHtml(section) {
     '<label class="field">Date<input name="date" type="date" required value="' + esc(pfForm.date) + '"></label>' +
     '<label class="field">Video link<span class="hint">Paste the link from the machine QR code.</span><input name="link" type="text" inputmode="url" placeholder="https://" autocapitalize="off" autocorrect="off" spellcheck="false" value="' + esc(pfForm.link) + '"></label>' +
     scan +
+    '<label class="field">Photo<span class="hint">Take a picture or choose a screenshot.</span><input name="photo" id="pf-photo-file" type="file" accept="image/*"></label>' +
+    '<img id="pf-photo-preview" class="pf-photo-now hidden" alt="">' +
+    currentHtml +
     '<div class="row"><button class="big" type="submit">' + (editing ? "Save changes" : "Save workout") + '</button>' +
     '<button class="ghost" type="button" id="pf-cancel">Cancel</button></div>' +
     '</form>';
@@ -897,7 +1082,12 @@ function pfEntryHtml(entry, list) {
   const link = entry.link
     ? '<a class="video-link" href="' + esc(entry.link) + '" target="_blank" rel="noopener noreferrer">Watch video</a>'
     : "";
+  const src = entryPhotoSrc(entry);
+  const thumb = src
+    ? '<button type="button" class="pf-thumb" data-pf-view="' + esc(entry.id) + '"><img alt="Photo of ' + esc(entry.name) + '" src="' + src + '"></button>'
+    : "";
   return '<article class="pf-entry">' +
+    thumb +
     '<h3>' + esc(entry.name) + '</h3>' +
     '<p class="pf-meta">' + esc(prettyDate(entry.date)) + ' · ' + esc(weightText(entry.weight)) + ' lb</p>' +
     (change ? '<p class="pf-progress">' + esc(change) + '</p>' : '') +
@@ -921,12 +1111,17 @@ function pfHtml() {
     return '<section class="card pf-section"><h2 class="name" style="font-size:24px">' + section.label + '</h2>' +
       adder + empty + entries + '</section>';
   }).join("");
-  return '<button class="back" type="button" id="back">← Days</button>' +
+  const viewer = pfViewer
+    ? '<div class="lightbox" id="pf-lightbox"><button type="button" class="lightbox-close" id="pf-lightbox-close">Close</button><img alt="" src="' + pfViewer + '"></div>'
+    : "";
+  return viewer +
+    '<button class="back" type="button" id="back">← Days</button>' +
     '<h1>Planet Fitness</h1><p class="sub">Leg, Ab, Back, and Upper body. Saved on this phone.</p>' +
     sections;
 }
 
 function openPfForm(sectionId, seed) {
+  pfViewer = "";
   pfForm = {
     section: sectionId,
     id: seed && seed.id ? seed.id : "",
@@ -934,20 +1129,66 @@ function openPfForm(sectionId, seed) {
     name: seed && seed.name ? seed.name : "",
     weight: seed && seed.weight != null && seed.weight !== "" ? String(seed.weight) : "",
     date: seed && seed.date ? seed.date : todayISO(),
-    link: seed && seed.link ? seed.link : ""
+    link: seed && seed.link ? seed.link : "",
+    photoId: seed && seed.photoId ? seed.photoId : "",
+    photo: seed && validPhoto(seed.photo) ? seed.photo : ""
   };
   screen = "pf";
   render();
 }
 
-function onPfSave(ev) {
+function pfRecord(id, created, section, name, weight, date, link, photoId, photo) {
+  return {
+    id: id,
+    section: section,
+    name: name,
+    weight: weight,
+    date: date,
+    link: link,
+    created: created,
+    photoId: photoId || "",
+    photo: validPhoto(photo) ? photo : ""
+  };
+}
+
+function pfSaveLabel() {
+  return pfForm && pfForm.id ? "Save changes" : "Save workout";
+}
+
+async function linkFromImageFile(file) {
+  if (!file || !("BarcodeDetector" in window)) return "";
+  let bitmap = null;
+  try {
+    const formats = BarcodeDetector.getSupportedFormats ? await BarcodeDetector.getSupportedFormats() : ["qr_code"];
+    if (!formats || formats.indexOf("qr_code") === -1) return "";
+    try {
+      bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+    } catch (e) {
+      bitmap = await createImageBitmap(file);
+    }
+    const detector = new BarcodeDetector({ formats: ["qr_code"] });
+    const codes = await detector.detect(bitmap);
+    if (!codes || !codes.length) return "";
+    const url = cleanLink(codes[0].rawValue || "");
+    return url || "";
+  } catch (e) {
+    return "";
+  } finally {
+    if (bitmap && bitmap.close) bitmap.close();
+  }
+}
+
+async function onPfSave(ev) {
   ev.preventDefault();
   const form = ev.target;
   const err = document.getElementById("pf-error");
+  const submit = form.querySelector('button[type="submit"]');
   const name = clean(form.name.value, 80);
   const weight = cleanWeight(form.weight.value);
   const date = cleanDate(form.date.value);
   const link = cleanLink(form.link.value);
+  const file = form.photo.files && form.photo.files[0];
+  const remove = !!(form.removePhoto && form.removePhoto.checked && !file);
   if (!name) {
     err.textContent = "Add a workout name.";
     return;
@@ -966,32 +1207,74 @@ function onPfSave(ev) {
   }
   const section = pfForm && pfForm.section;
   if (!pfSectionLabel(section)) return;
-  let next;
-  if (pfForm.id) {
-    next = pfLogs.map(function (entry) {
-      if (entry.id !== pfForm.id) return entry;
-      return { id: entry.id, section: section, name: name, weight: weight, date: date, link: link, created: entry.created };
-    });
-  } else {
-    next = pfLogs.concat([{
-      id: "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
-      section: section,
-      name: name,
-      weight: weight,
-      date: date,
-      link: link,
-      created: Date.now()
-    }]);
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = "Saving…";
   }
+  let photoId = pfForm.photoId || "";
+  let inline = validPhoto(pfForm.photo) ? pfForm.photo : "";
+  let newPhotoId = "";
+  if (file) {
+    let data = "";
+    try {
+      data = await compressImage(file);
+    } catch (e) {
+      err.textContent = "Couldn't read that photo. Try another from your camera or library.";
+      if (submit) {
+        submit.disabled = false;
+        submit.textContent = pfSaveLabel();
+      }
+      return;
+    }
+    newPhotoId = "ph" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    try {
+      await putPfPhoto(newPhotoId, data);
+      pfPhotoCache[newPhotoId] = data;
+      photoId = newPhotoId;
+      inline = "";
+    } catch (e) {
+      err.textContent = "This phone is out of room for another photo. This workout was not changed.";
+      if (submit) {
+        submit.disabled = false;
+        submit.textContent = pfSaveLabel();
+      }
+      return;
+    }
+  } else if (remove) {
+    photoId = "";
+    inline = "";
+  }
+  const created = pfForm.id ? (pfLogs.find(function (entry) { return entry.id === pfForm.id; }) || {}).created || Date.now() : Date.now();
+  const id = pfForm.id || ("p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+  const record = pfRecord(id, created, section, name, weight, date, link, photoId, inline);
+  const next = pfForm.id
+    ? pfLogs.map(function (entry) { return entry.id === pfForm.id ? record : entry; })
+    : pfLogs.concat([record]);
   try {
     savePf(next);
   } catch (e) {
-    err.textContent = "This phone is out of room for more logs.";
+    if (newPhotoId) {
+      try { await deletePfPhoto(newPhotoId); } catch (err2) {}
+      delete pfPhotoCache[newPhotoId];
+    }
+    err.textContent = "This phone is out of room for more logs. This workout was not changed.";
+    if (submit) {
+      submit.disabled = false;
+      submit.textContent = pfSaveLabel();
+    }
     return;
   }
+  const previousId = pfForm.photoId || "";
   pfLogs = next;
+  if (previousId && previousId !== photoId && !photoStillUsed(previousId, pfLogs)) {
+    try { await deletePfPhoto(previousId); } catch (e) {}
+    delete pfPhotoCache[previousId];
+  }
   pfForm = null;
   render();
+  refreshPfPhotos().then(function () {
+    if (screen === "pf" && !pfForm && !scanStream) render();
+  });
 }
 
 async function startScan() {
@@ -1088,7 +1371,15 @@ function bind() {
   const form = document.getElementById("add-form");
   if (form) form.addEventListener("submit", onAdd);
   const pf = document.getElementById("pf");
-  if (pf) pf.addEventListener("click", function () { pfForm = null; screen = "pf"; render(); });
+  if (pf) pf.addEventListener("click", function () {
+    pfForm = null;
+    pfViewer = "";
+    screen = "pf";
+    render();
+    refreshPfPhotos().then(function () {
+      if (screen === "pf" && !pfForm && !scanStream) render();
+    });
+  });
   document.querySelectorAll("[data-pf-add]").forEach(function (btn) {
     btn.addEventListener("click", function () { openPfForm(btn.getAttribute("data-pf-add")); });
   });
@@ -1103,7 +1394,7 @@ function bind() {
     btn.addEventListener("click", function () {
       const entry = pfLogs.find(function (e) { return e.id === btn.getAttribute("data-pf-again"); });
       if (!entry) return;
-      openPfForm(entry.section, { again: true, name: entry.name, link: entry.link, date: todayISO(), weight: "" });
+      openPfForm(entry.section, { again: true, name: entry.name, link: entry.link, date: todayISO(), weight: "", photoId: entry.photoId, photo: entry.photo });
     });
   });
   document.querySelectorAll("[data-pf-delete]").forEach(function (btn) {
@@ -1115,7 +1406,12 @@ function bind() {
       const next = pfLogs.filter(function (e) { return e.id !== id; });
       try { savePf(next); } catch (e) { return; }
       pfLogs = next;
+      if (entry.photoId && !photoStillUsed(entry.photoId, pfLogs)) {
+        deletePfPhoto(entry.photoId).catch(function () {});
+        delete pfPhotoCache[entry.photoId];
+      }
       if (pfForm && pfForm.id === id) pfForm = null;
+      if (pfViewer) pfViewer = "";
       render();
     });
   });
@@ -1130,6 +1426,37 @@ function bind() {
     stopScan();
     const box = document.getElementById("scanner");
     if (box) box.classList.add("hidden");
+  });
+  const photoFile = document.getElementById("pf-photo-file");
+  if (photoFile) photoFile.addEventListener("change", function () {
+    const file = photoFile.files && photoFile.files[0];
+    const preview = document.getElementById("pf-photo-preview");
+    if (!file || !preview) return;
+    if (pfPreviewUrl) URL.revokeObjectURL(pfPreviewUrl);
+    pfPreviewUrl = URL.createObjectURL(file);
+    preview.src = pfPreviewUrl;
+    preview.classList.remove("hidden");
+    const linkInput = document.querySelector("#pf-form input[name=link]");
+    if (linkInput && !linkInput.value.trim()) {
+      linkFromImageFile(file).then(function (url) {
+        if (url && linkInput && !linkInput.value.trim()) linkInput.value = url;
+      });
+    }
+  });
+  document.querySelectorAll("[data-pf-view]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const entry = pfLogs.find(function (e) { return e.id === btn.getAttribute("data-pf-view"); });
+      const src = entryPhotoSrc(entry);
+      if (!src) return;
+      pfViewer = src;
+      render();
+    });
+  });
+  const lightboxClose = document.getElementById("pf-lightbox-close");
+  if (lightboxClose) lightboxClose.addEventListener("click", function () { pfViewer = ""; render(); });
+  const lightbox = document.getElementById("pf-lightbox");
+  if (lightbox) lightbox.addEventListener("click", function (ev) {
+    if (ev.target === lightbox) { pfViewer = ""; render(); }
   });
   document.querySelectorAll("[data-remove]").forEach(function (btn) {
     btn.addEventListener("click", function () {
