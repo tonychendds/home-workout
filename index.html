@@ -606,7 +606,7 @@ function homeHtml() {
     return '<button class="day-btn" type="button" data-day="' + d.id + '"><div><strong>' + d.title + '</strong><span>' + d.blurb + '</span></div>' + mark + '</button>';
   }).join("");
   return '<button class="day-btn pf-home" type="button" id="pf"><div><strong>Planet Fitness</strong><span>Log weight, date, and machine videos</span></div></button>' +
-    '<h1>This week</h1><p class="sub">Pick a day. One exercise at a time.</p>' +
+    '<h1>Home Workout</h1><p class="sub">Pick a day. One exercise at a time.</p>' +
     '<button class="day-btn draw-btn" type="button" id="draw">Draw an exercise</button>' +
     '<div class="days">' + cards + '</div>' +
     '<button class="day-btn" type="button" id="add" style="margin-top:12px"><div><strong>Add an exercise</strong><span>Saved on this phone</span></div></button>';
@@ -791,6 +791,7 @@ async function onAdd(ev) {
 const PF_KEY = "tony-planet-fitness-v1";
 const PF_SECTIONS = [
   { id: "leg", label: "Leg" },
+  { id: "hip", label: "Hip" },
   { id: "ab", label: "Ab" },
   { id: "back", label: "Back" },
   { id: "upper", label: "Upper body" }
@@ -1116,7 +1117,7 @@ function pfHtml() {
     : "";
   return viewer +
     '<button class="back" type="button" id="back">← Days</button>' +
-    '<h1>Planet Fitness</h1><p class="sub">Leg, Ab, Back, and Upper body. Saved on this phone.</p>' +
+    '<h1>Planet Fitness</h1><p class="sub">Leg, Hip, Ab, Back, and Upper body. Saved on this phone.</p>' +
     sections;
 }
 

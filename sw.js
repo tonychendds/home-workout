@@ -1,4 +1,4 @@
-/* Navigations reload so a published update is what the phone opens. */
+/* Navigations reload so a published update, including the Hip section and the Home Workout heading, is what the phone opens. */
 self.addEventListener("install", function (event) {
   event.waitUntil(self.skipWaiting());
 });
