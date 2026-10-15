@@ -316,10 +316,29 @@
     color: var(--text);
     font-weight: 700;
   }
+  .banner {
+    border: 1px solid #3d3a62;
+    background: #1a1830;
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin: 0 0 16px;
+  }
+  .banner p { margin: 0 0 8px; font-size: 14px; }
+  .banner-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .banner-row button {
+    background: transparent;
+    color: #d7d4ff;
+    font-weight: 700;
+    min-height: 44px;
+    padding: 8px 0;
+  }
+  .banner.error { border-color: #6a3535; }
+  .banner.ok { border-color: #1d4a36; }
 </style>
 </head>
 <body>
 <div class="wrap">
+  <div id="sync-banner" class="banner" role="status"></div>
   <main id="app"></main>
 </div>
 <script>
@@ -411,6 +430,8 @@ function fig(m) {
   return '<img class="fig" src="' + src + '" alt="Illustration of ' + esc(m.name) + '">';
 }
 
+// These names belong to this app only. Other apps share https://tonychendds.github.io.
+// Never clear all of localStorage, and never delete another app's caches or databases.
 const KEY = "tony-home-gym-plan-v1";
 const CUSTOM_KEY = "tony-home-gym-custom-v1";
 
@@ -424,8 +445,12 @@ function load() {
     return { done: {}, cursor: {} };
   }
 }
-function save(state) {
-  localStorage.setItem(KEY, JSON.stringify(state));
+function save(next) {
+  localStorage.setItem(KEY, JSON.stringify({ done: next.done || {}, cursor: next.cursor || {} }));
+  if (!applyingRemote) {
+    stampProgress();
+    scheduleSync();
+  }
 }
 
 function clean(s, max) {
@@ -456,7 +481,19 @@ function loadCustom() {
   }
 }
 function saveCustom(list) {
+  const before = customs;
   localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+  if (applyingRemote) return;
+  const nextIds = {};
+  list.forEach(function (item) { nextIds[item.id] = true; });
+  before.forEach(function (item) {
+    if (!nextIds[item.id]) stampDelete(item.id, "exercise");
+  });
+  list.forEach(function (item) {
+    const prev = before.find(function (p) { return p.id === item.id; });
+    if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) stampTime(item.id);
+  });
+  scheduleSync();
 }
 
 function movesFor(day) {
@@ -516,6 +553,8 @@ async function compressImage(file) {
 const state = load();
 let customs = loadCustom();
 let screen = "home";
+let accountMode = "signin";
+let applyingRemote = false;
 let dayId = null;
 let index = 0;
 let remaining = 0;
@@ -578,6 +617,7 @@ function render() {
   stopScan();
   clearPfPreview();
   if (screen === "home") root.innerHTML = homeHtml();
+  else if (screen === "account") root.innerHTML = accountHtml();
   else if (screen === "workout") root.innerHTML = workoutHtml();
   else if (screen === "move") root.innerHTML = moveHtml();
   else if (screen === "draw") root.innerHTML = drawHtml();
@@ -585,6 +625,7 @@ function render() {
   else if (screen === "pf") root.innerHTML = pfHtml();
   else root.innerHTML = finishHtml();
   bind();
+  renderBanner();
   const opened = document.getElementById("pf-form");
   if (opened && opened.scrollIntoView) opened.scrollIntoView({ block: "center" });
 }
@@ -878,7 +919,19 @@ function loadPf() {
 }
 
 function savePf(list) {
+  const before = pfLogs;
   localStorage.setItem(PF_KEY, JSON.stringify(list));
+  if (applyingRemote) return;
+  const nextIds = {};
+  list.forEach(function (item) { nextIds[item.id] = true; });
+  before.forEach(function (item) {
+    if (!nextIds[item.id]) stampDelete(item.id, "pf");
+  });
+  list.forEach(function (item) {
+    const prev = before.find(function (p) { return p.id === item.id; });
+    if (!prev || JSON.stringify(prev) !== JSON.stringify(item)) stampTime(item.id);
+  });
+  scheduleSync();
 }
 
 const PF_DB = "tony-planet-fitness";
@@ -1487,10 +1540,719 @@ function bind() {
       render();
     });
   });
+  const acctForm = document.getElementById("acct-form");
+  if (acctForm) acctForm.addEventListener("submit", submitAccount);
+  const acctSwitch = document.getElementById("acct-switch");
+  if (acctSwitch) acctSwitch.addEventListener("click", function () {
+    accountMode = accountMode === "create" ? "signin" : "create";
+    render();
+  });
+  const acctSync = document.getElementById("acct-sync");
+  if (acctSync) acctSync.addEventListener("click", function () { syncNow(); });
+  const acctOut = document.getElementById("acct-sign-out");
+  if (acctOut) acctOut.addEventListener("click", function () { signOut(); });
+}
+
+const SYNC_KEY = "tony-workout-sync-v1";
+const SYNC_URL = "https://workout-sync.tonychendds.workers.dev";
+const SYNC_PHOTO_MAX = 70000;
+const DAY_IDS = ["upper", "lower", "core"];
+
+function loadSyncMeta() {
+  const empty = { session: null, lastSyncedAt: 0, syncError: "", syncing: false, times: {}, tombstones: {} };
+  try {
+    const raw = localStorage.getItem(SYNC_KEY);
+    if (!raw) return empty;
+    const data = JSON.parse(raw);
+    const session = data && data.session && typeof data.session.token === "string" && typeof data.session.email === "string"
+      ? { token: data.session.token, email: data.session.email }
+      : null;
+    return {
+      session: session,
+      lastSyncedAt: data && typeof data.lastSyncedAt === "number" ? data.lastSyncedAt : 0,
+      syncError: data && typeof data.syncError === "string" ? data.syncError : "",
+      syncing: false,
+      times: data && data.times && typeof data.times === "object" ? data.times : {},
+      tombstones: data && data.tombstones && typeof data.tombstones === "object" ? data.tombstones : {}
+    };
+  } catch (e) {
+    return empty;
+  }
+}
+
+function persistSyncMeta() {
+  try {
+    localStorage.setItem(SYNC_KEY, JSON.stringify({
+      session: syncMeta.session,
+      lastSyncedAt: syncMeta.lastSyncedAt,
+      syncError: syncMeta.syncError,
+      times: syncMeta.times,
+      tombstones: syncMeta.tombstones
+    }));
+  } catch (e) {}
+}
+
+let syncMeta = loadSyncMeta();
+let syncTimer = null;
+let syncRunning = false;
+let syncRerun = false;
+let sentPhotos = {};
+
+function syncBase() {
+  try {
+    const value = new URL(location.href).searchParams.get("sync");
+    if (value) {
+      const target = new URL(value);
+      if (target.protocol === "http:" && (target.hostname === "127.0.0.1" || target.hostname === "localhost")) {
+        return value.replace(/\/$/, "");
+      }
+    }
+  } catch (e) {}
+  return SYNC_URL;
+}
+
+function requestPersistentStorage() {
+  return Promise.resolve().then(function () {
+    try {
+      const storage = navigator.storage;
+      if (!storage || typeof storage.persist !== "function") return false;
+      return storage.persist().then(function (kept) { return kept === true; }).catch(function () { return false; });
+    } catch (e) {
+      return false;
+    }
+  });
+}
+
+function recordIdOk(id) {
+  return typeof id === "string" && /^[A-Za-z0-9:_-]{1,80}$/.test(id);
+}
+
+function stampTime(id) {
+  syncMeta.times[id] = Date.now();
+  if (syncMeta.tombstones[id]) delete syncMeta.tombstones[id];
+  persistSyncMeta();
+}
+
+function stampDelete(id, type) {
+  syncMeta.tombstones[id] = { type: type, updatedAt: Date.now() };
+  delete syncMeta.times[id];
+  persistSyncMeta();
+}
+
+function stampProgress() {
+  stampTime("plan");
+}
+
+function timeFor(id, fallback) {
+  const existing = syncMeta.times[id];
+  if (typeof existing === "number" && existing >= 1) return existing;
+  let stamp = typeof fallback === "number" && fallback > 0 ? fallback : Date.now();
+  if (!Number.isSafeInteger(stamp) || stamp < 1) stamp = Date.now();
+  syncMeta.times[id] = stamp;
+  persistSyncMeta();
+  return stamp;
+}
+
+function hasProgress() {
+  return DAY_IDS.some(function (id) {
+    return !!state.done[id] || typeof state.cursor[id] === "number";
+  });
+}
+
+function progressPayload() {
+  const done = {};
+  const cursor = {};
+  DAY_IDS.forEach(function (id) {
+    if (typeof state.done[id] === "string" && state.done[id] && state.done[id].length <= 40) done[id] = state.done[id];
+    const n = state.cursor[id];
+    if (typeof n === "number" && Number.isSafeInteger(n) && n >= 0 && n <= 100) cursor[id] = n;
+  });
+  return { done: done, cursor: cursor };
+}
+
+function progressFromRemote(payload) {
+  const done = {};
+  const cursor = {};
+  const srcDone = payload && payload.done && typeof payload.done === "object" ? payload.done : {};
+  const srcCursor = payload && payload.cursor && typeof payload.cursor === "object" ? payload.cursor : {};
+  DAY_IDS.forEach(function (id) {
+    if (typeof srcDone[id] === "string" && srcDone[id] && srcDone[id].length <= 40) done[id] = srcDone[id];
+    const n = srcCursor[id];
+    if (typeof n === "number" && Number.isSafeInteger(n) && n >= 0 && n <= 100) cursor[id] = n;
+  });
+  return { done: done, cursor: cursor };
+}
+
+function localBeats(id, remote) {
+  const tomb = syncMeta.tombstones[id];
+  if (tomb && !remote.deleted) return true;
+  if (remote.deleted) return false;
+  const localTime = typeof syncMeta.times[id] === "number" ? syncMeta.times[id] : 0;
+  return localTime > remote.updatedAt;
+}
+
+function formatSynced(ts) {
+  if (!ts) return "Not synced yet";
+  try {
+    return "Last synced " + new Date(ts).toLocaleString();
+  } catch (e) {
+    return "Last synced";
+  }
+}
+
+function renderBanner() {
+  const banner = document.getElementById("sync-banner");
+  if (!banner) return;
+  if (!syncMeta.session) {
+    const expired = /session expired/i.test(syncMeta.syncError || "");
+    banner.className = expired ? "banner error" : "banner";
+    banner.innerHTML = "<p>" + esc(expired ? syncMeta.syncError : "Not signed in. Your workouts stay on this phone only.") + "</p>" +
+      '<div class="banner-row"><button type="button" id="banner-sign-in">Sign in</button><button type="button" id="banner-create">Create account</button></div>';
+    document.getElementById("banner-sign-in").addEventListener("click", function () {
+      accountMode = "signin";
+      screen = "account";
+      render();
+    });
+    document.getElementById("banner-create").addEventListener("click", function () {
+      accountMode = "create";
+      screen = "account";
+      render();
+    });
+    return;
+  }
+  const status = syncMeta.syncing ? "Syncing…" : (syncMeta.syncError || formatSynced(syncMeta.lastSyncedAt));
+  banner.className = syncMeta.syncError && !syncMeta.syncing ? "banner error" : "banner ok";
+  banner.innerHTML = "<p>Signed in as " + esc(syncMeta.session.email) + ". " + esc(status) + "</p>" +
+    '<div class="banner-row"><button type="button" id="banner-sync">Sync now</button><button type="button" id="banner-sign-out">Sign out</button></div>';
+  document.getElementById("banner-sync").addEventListener("click", function () { syncNow(); });
+  document.getElementById("banner-sign-out").addEventListener("click", function () { signOut(); });
+}
+
+function accountHtml() {
+  const back = '<button class="back" type="button" id="back">← Home</button>';
+  if (syncMeta.session) {
+    const status = syncMeta.syncing ? "Syncing…" : (syncMeta.syncError || formatSynced(syncMeta.lastSyncedAt));
+    return back + "<h1>Account</h1>" +
+      '<p class="sub">Signed in as ' + esc(syncMeta.session.email) + "</p>" +
+      '<p class="sub">' + esc(status) + "</p>" +
+      '<button class="big" type="button" id="acct-sync" style="width:100%">Sync now</button>' +
+      '<button class="ghost" type="button" id="acct-sign-out" style="width:100%;margin-top:12px">Sign out</button>';
+  }
+  const create = accountMode === "create";
+  return back + "<h1>Account</h1>" +
+    '<p class="form-error" id="acct-error" role="alert"></p>' +
+    '<form id="acct-form">' +
+    '<label class="field">Email or username<input id="acct-login" name="login" required maxlength="200" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false"></label>' +
+    '<label class="field">Password<input id="acct-password" name="password" type="password" required maxlength="200" autocomplete="' + (create ? "new-password" : "current-password") + '"></label>' +
+    (create
+      ? '<label class="field">Confirm password<input id="acct-confirm" name="confirm" type="password" required maxlength="200" autocomplete="new-password"></label>' +
+        '<p class="page-note">A forgotten password cannot be recovered. There is no reset email.</p>' +
+        '<label class="field check"><input id="acct-ack" type="checkbox"> I understand a forgotten password cannot be recovered.</label>'
+      : "") +
+    '<button class="big" type="submit" id="acct-submit" style="width:100%">' + (create ? "Create account" : "Sign in") + "</button>" +
+    "</form>" +
+    '<button class="ghost" type="button" id="acct-switch" style="width:100%;margin-top:12px">' + (create ? "I have an account" : "Create account") + "</button>";
+}
+
+function scheduleSync() {
+  if (!syncMeta.session) return;
+  if (syncRunning) {
+    syncRerun = true;
+    return;
+  }
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(function () { syncNow(); }, 700);
+}
+
+function syncNow() {
+  if (!syncMeta.session) return Promise.resolve({ ok: false, error: "Not signed in." });
+  if (syncRunning) {
+    syncRerun = true;
+    return Promise.resolve({ ok: true, queued: true });
+  }
+  syncRunning = true;
+  let result = { ok: false, error: "Sync did not finish." };
+  const run = function () {
+    syncRerun = false;
+    return pushAndPull().then(function (next) {
+      result = next;
+      if (syncRerun && syncMeta.session) return run();
+      return result;
+    });
+  };
+  return run().then(function (finalResult) {
+    syncRunning = false;
+    return finalResult;
+  }, function (err) {
+    syncRunning = false;
+    throw err;
+  });
+}
+
+function shrinkPhoto(dataUrl) {
+  if (!dataUrl) return Promise.resolve("");
+  if (dataUrl.length <= SYNC_PHOTO_MAX && validPhoto(dataUrl)) return Promise.resolve(dataUrl);
+  if (typeof createImageBitmap !== "function") return Promise.resolve("");
+  return createImageBitmap(dataUrlToBlob(dataUrl)).then(function (bitmap) {
+    try {
+      let maxSide = 480;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+        const w = Math.max(1, Math.round(bitmap.width * scale));
+        const h = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d", { alpha: false });
+        ctx.fillStyle = "#10141b";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        let q = 0.55;
+        let out = canvas.toDataURL("image/jpeg", q);
+        while (out.length > SYNC_PHOTO_MAX && q > 0.3) {
+          q = Math.round((q - 0.08) * 100) / 100;
+          out = canvas.toDataURL("image/jpeg", q);
+        }
+        if (out.length <= SYNC_PHOTO_MAX && validPhoto(out)) return out;
+        maxSide = Math.round(maxSide * 0.6);
+      }
+      return "";
+    } finally {
+      if (bitmap.close) bitmap.close();
+    }
+  }).catch(function () { return ""; });
+}
+
+function photoForSync(raw) {
+  if (!raw) return Promise.resolve({ photo: "", tooBig: false });
+  return shrinkPhoto(raw).then(function (photo) {
+    if (!photo || photo.length > SYNC_PHOTO_MAX || !validPhoto(photo)) return { photo: "", tooBig: true };
+    return { photo: photo, tooBig: false };
+  });
+}
+
+function pfPhotoData(entry) {
+  if (validPhoto(entry.photo)) return Promise.resolve(entry.photo);
+  if (!entry.photoId) return Promise.resolve("");
+  if (validPhoto(pfPhotoCache[entry.photoId])) return Promise.resolve(pfPhotoCache[entry.photoId]);
+  return getPfPhoto(entry.photoId).then(function (url) {
+    if (url) pfPhotoCache[entry.photoId] = url;
+    return url || "";
+  }).catch(function () { return ""; });
+}
+
+function collectRecords() {
+  const records = [];
+  let oversized = false;
+  sentPhotos = {};
+  Object.keys(syncMeta.tombstones).forEach(function (id) {
+    const tomb = syncMeta.tombstones[id];
+    if (!tomb || !recordIdOk(id)) return;
+    if (tomb.type !== "exercise" && tomb.type !== "pf" && tomb.type !== "progress") return;
+    if (typeof tomb.updatedAt !== "number" || !Number.isSafeInteger(tomb.updatedAt) || tomb.updatedAt < 1) return;
+    records.push({ id: id, type: tomb.type, updatedAt: tomb.updatedAt, deleted: true, payload: null });
+  });
+  let chain = Promise.resolve();
+  customs.forEach(function (item) {
+    chain = chain.then(function () {
+      if (!recordIdOk(item.id)) return;
+      return photoForSync(item.photo || "").then(function (shot) {
+        if (shot.tooBig) { oversized = true; timeFor(item.id, 0); return; }
+        const payload = {
+          dayId: item.dayId,
+          name: item.name,
+          dose: item.dose || "",
+          how: item.how || "",
+          photo: shot.photo,
+          rest: typeof item.rest === "number" && item.rest >= 0 && item.rest <= 600 ? Math.round(item.rest) : 60
+        };
+        const rec = { id: item.id, type: "exercise", updatedAt: timeFor(item.id, 0), deleted: false, payload: payload };
+        if (JSON.stringify(rec).length > 90000) { oversized = true; return; }
+        sentPhotos[item.id] = shot.photo;
+        records.push(rec);
+      });
+    });
+  });
+  pfLogs.forEach(function (entry) {
+    chain = chain.then(function () {
+      if (!recordIdOk(entry.id)) return;
+      return pfPhotoData(entry).then(photoForSync).then(function (shot) {
+        const created = typeof entry.created === "number" && entry.created > 0 ? entry.created : 0;
+        if (shot.tooBig || (entry.link && entry.link.length > 500)) { oversized = true; timeFor(entry.id, created); return; }
+        const payload = {
+          section: entry.section,
+          name: entry.name,
+          weight: entry.weight,
+          date: entry.date,
+          link: entry.link || "",
+          created: created,
+          photo: shot.photo
+        };
+        const rec = { id: entry.id, type: "pf", updatedAt: timeFor(entry.id, created), deleted: false, payload: payload };
+        if (JSON.stringify(rec).length > 90000) { oversized = true; return; }
+        sentPhotos[entry.id] = shot.photo;
+        records.push(rec);
+      });
+    });
+  });
+  return chain.then(function () {
+    if (hasProgress()) {
+      const rec = { id: "plan", type: "progress", updatedAt: timeFor("plan", 0), deleted: false, payload: progressPayload() };
+      records.push(rec);
+    }
+    return { records: records, oversized: oversized };
+  });
+}
+
+function chunkRecords(records) {
+  const chunks = [];
+  let current = [];
+  let size = 20;
+  records.forEach(function (rec) {
+    const encoded = JSON.stringify(rec);
+    if (current.length && (size + encoded.length > 1200000 || current.length >= 15)) {
+      chunks.push(current);
+      current = [];
+      size = 20;
+    }
+    current.push(rec);
+    size += encoded.length + 1;
+  });
+  if (current.length || !chunks.length) chunks.push(current);
+  return chunks;
+}
+
+function readJsonResponse(response) {
+  return response.json().then(function (body) { return body; }).catch(function () { return null; });
+}
+
+function pushAndPull() {
+  if (!syncMeta.session) return Promise.resolve({ ok: false, error: "Not signed in." });
+  syncMeta.syncing = true;
+  renderBanner();
+  const token = syncMeta.session.token;
+  return collectRecords().then(function (collected) {
+    if (collected.oversized) syncMeta.syncError = "A photo is too big to sync. It stays on this phone.";
+    const chunks = chunkRecords(collected.records);
+    let lastBody = null;
+    let chain = Promise.resolve();
+    chunks.forEach(function (chunk) {
+      chain = chain.then(function () {
+        if (!syncMeta.session || syncMeta.session.token !== token) return;
+        return fetch(syncBase() + "/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+          body: JSON.stringify({ records: chunk })
+        }).then(function (response) {
+          return readJsonResponse(response).then(function (body) {
+            if (response.status === 401) {
+              const expired = new Error("Your session expired. Sign in again. Nothing on this device was deleted.");
+              expired.status = 401;
+              throw expired;
+            }
+            if (!response.ok || !body || !Array.isArray(body.records)) {
+              throw new Error((body && body.error) || "Sync didn't finish. Your changes are still saved on this phone.");
+            }
+            lastBody = body;
+          });
+        });
+      });
+    });
+    return chain.then(function () {
+      return finishSync(collected, lastBody, null);
+    }, function (err) {
+      return finishSync(collected, lastBody, err);
+    });
+  }).catch(function (err) {
+    return finishSync({ oversized: false }, null, err);
+  });
+}
+
+function finishSync(collected, lastBody, err) {
+  syncMeta.syncing = false;
+  if (err && err.status === 401) {
+    syncMeta.session = null;
+    syncMeta.syncError = err.message;
+    persistSyncMeta();
+    renderBanner();
+    if (screen !== "move" && screen !== "draw") render();
+    return { ok: false, error: syncMeta.syncError };
+  }
+  if (err) {
+    if (lastBody && Array.isArray(lastBody.records)) {
+      return applyServerRecords(lastBody.records).then(function () {
+        syncMeta.syncError = networkSyncMessage(err);
+        persistSyncMeta();
+        refreshAfterSync(false);
+        return { ok: false, error: syncMeta.syncError };
+      });
+    }
+    syncMeta.syncError = networkSyncMessage(err);
+    persistSyncMeta();
+    refreshAfterSync(false);
+    return Promise.resolve({ ok: false, error: syncMeta.syncError });
+  }
+  if (!lastBody) {
+    syncMeta.syncError = "Sync didn't finish. Your changes are still saved on this phone.";
+    persistSyncMeta();
+    refreshAfterSync(false);
+    return Promise.resolve({ ok: false, error: syncMeta.syncError });
+  }
+  syncMeta.lastSyncedAt = typeof lastBody.serverTime === "number" ? lastBody.serverTime : Date.now();
+  if (!collected.oversized) syncMeta.syncError = "";
+  return applyServerRecords(lastBody.records).then(function (changed) {
+    persistSyncMeta();
+    refreshAfterSync(changed);
+    return { ok: !syncMeta.syncError, error: syncMeta.syncError || "" };
+  });
+}
+
+function networkSyncMessage(err) {
+  if (err && err.message && err.message.indexOf("Sync didn't finish") === 0) return err.message;
+  if (err && err.message && err.message.indexOf("too large") !== -1) return err.message;
+  if (err && err.name === "TypeError") return "Could not reach the sync server. Your workouts on this phone were not changed.";
+  return (err && err.message) || "Sync didn't finish. Your changes are still saved on this phone.";
+}
+
+function refreshAfterSync(changed) {
+  renderBanner();
+  if (!changed) return;
+  if (screen === "add" || screen === "move" || screen === "draw") return;
+  if (screen === "pf" && pfForm) return;
+  render();
+}
+
+function exerciseFromRemote(rec) {
+  const payload = rec.payload || {};
+  if (!recordIdOk(rec.id) || !DAY_LABEL[payload.dayId] || !clean(payload.name, 80)) return null;
+  return {
+    id: rec.id,
+    dayId: payload.dayId,
+    name: clean(payload.name, 80),
+    dose: clean(payload.dose, 40),
+    how: clean(payload.how, 280),
+    photo: validPhoto(payload.photo) ? payload.photo : "",
+    rest: typeof payload.rest === "number" && payload.rest >= 0 && payload.rest <= 600 ? Math.round(payload.rest) : 60
+  };
+}
+
+function dropPfPhoto(entry, list) {
+  if (!entry || !entry.photoId || photoStillUsed(entry.photoId, list)) return;
+  delete pfPhotoCache[entry.photoId];
+  deletePfPhoto(entry.photoId).catch(function () {});
+}
+
+function pfFromRemote(rec) {
+  const payload = rec.payload || {};
+  if (!recordIdOk(rec.id) || !pfSectionLabel(payload.section) || !clean(payload.name, 80)) return Promise.resolve(null);
+  if (cleanWeight(payload.weight) === null || !cleanDate(payload.date)) return Promise.resolve(null);
+  const link = payload.link ? cleanLink(payload.link) : "";
+  const entry = {
+    id: rec.id,
+    section: payload.section,
+    name: clean(payload.name, 80),
+    weight: cleanWeight(payload.weight),
+    date: cleanDate(payload.date),
+    link: link || "",
+    created: typeof payload.created === "number" ? payload.created : 0,
+    photoId: "",
+    photo: ""
+  };
+  if (!payload.photo) return Promise.resolve(entry);
+  if (!validPhoto(payload.photo)) return Promise.resolve(entry);
+  const photoId = "sy" + rec.id;
+  return putPfPhoto(photoId, payload.photo).then(function () {
+    pfPhotoCache[photoId] = payload.photo;
+    entry.photoId = photoId;
+    return entry;
+  }).catch(function () {
+    entry.photo = payload.photo;
+    if (!syncMeta.syncError) syncMeta.syncError = "A photo could not be saved on this phone. It is still in the account.";
+    return entry;
+  });
+}
+
+function applyServerRecords(records) {
+  const exerciseUpserts = [];
+  const exerciseDeletes = [];
+  const pfUpserts = [];
+  const pfDeletes = [];
+  let progress = null;
+  let progressDelete = false;
+  records.forEach(function (rec) {
+    if (!rec || !recordIdOk(rec.id)) return;
+    if (rec.type !== "exercise" && rec.type !== "pf" && rec.type !== "progress") return;
+    if (typeof rec.updatedAt !== "number") return;
+    if (localBeats(rec.id, rec)) return;
+    if (rec.deleted) {
+      syncMeta.tombstones[rec.id] = { type: rec.type, updatedAt: rec.updatedAt };
+      delete syncMeta.times[rec.id];
+      if (rec.type === "exercise") exerciseDeletes.push(rec);
+      else if (rec.type === "pf") pfDeletes.push(rec);
+      else if (rec.id === "plan") progressDelete = true;
+      return;
+    }
+    delete syncMeta.tombstones[rec.id];
+    syncMeta.times[rec.id] = rec.updatedAt;
+    if (rec.type === "exercise") exerciseUpserts.push(rec);
+    else if (rec.type === "pf") pfUpserts.push(rec);
+    else if (rec.id === "plan") progress = rec;
+  });
+  let changed = false;
+  if (exerciseDeletes.length || exerciseUpserts.length) {
+    let next = customs.slice();
+    exerciseDeletes.forEach(function (rec) {
+      if (next.some(function (item) { return item.id === rec.id; })) changed = true;
+      next = next.filter(function (item) { return item.id !== rec.id; });
+    });
+    exerciseUpserts.forEach(function (rec) {
+      const item = exerciseFromRemote(rec);
+      if (!item) return;
+      const idx = next.findIndex(function (row) { return row.id === item.id; });
+      if (idx !== -1 && validPhoto(next[idx].photo) && sentPhotos[item.id] === item.photo) item.photo = next[idx].photo;
+      if (idx === -1) { next.push(item); changed = true; }
+      else if (JSON.stringify(next[idx]) !== JSON.stringify(item)) { next[idx] = item; changed = true; }
+    });
+    applyingRemote = true;
+    try { saveCustom(next); } finally { applyingRemote = false; }
+    customs = next;
+  }
+  let chain = Promise.resolve();
+  if (pfDeletes.length || pfUpserts.length) {
+    chain = chain.then(function () {
+      let next = pfLogs.slice();
+      pfDeletes.forEach(function (rec) {
+        const existing = next.find(function (item) { return item.id === rec.id; });
+        if (existing) changed = true;
+        next = next.filter(function (item) { return item.id !== rec.id; });
+        if (existing) dropPfPhoto(existing, next);
+      });
+      let photos = Promise.resolve();
+      pfUpserts.forEach(function (rec) {
+        photos = photos.then(function () {
+          const idx = next.findIndex(function (row) { return row.id === rec.id; });
+          const previous = idx === -1 ? null : next[idx];
+          const echoed = previous && Object.prototype.hasOwnProperty.call(sentPhotos, rec.id) && sentPhotos[rec.id] === (rec.payload && rec.payload.photo || "");
+          const build = echoed
+            ? Promise.resolve(pfRecord(rec.id, previous.created, rec.payload.section, clean(rec.payload.name, 80), cleanWeight(rec.payload.weight), cleanDate(rec.payload.date), previous.link && rec.payload.link === previous.link ? previous.link : (cleanLink(rec.payload.link) || ""), previous.photoId, previous.photo))
+            : pfFromRemote(rec);
+          return build.then(function (item) {
+            if (!item) return;
+            if (idx === -1) { next.push(item); changed = true; }
+            else if (JSON.stringify(previous) !== JSON.stringify(item)) { next[idx] = item; changed = true; }
+            if (previous && previous.photoId && previous.photoId !== item.photoId) dropPfPhoto(previous, next);
+          });
+        });
+      });
+      return photos.then(function () {
+        applyingRemote = true;
+        try { savePf(next); } finally { applyingRemote = false; }
+        pfLogs = next;
+      });
+    });
+  }
+  return chain.then(function () {
+    if (progressDelete) {
+      if (Object.keys(state.done).length || Object.keys(state.cursor).length) changed = true;
+      state.done = {};
+      state.cursor = {};
+      applyingRemote = true;
+      try { save(state); } finally { applyingRemote = false; }
+    } else if (progress) {
+      const payload = progressFromRemote(progress.payload);
+      if (JSON.stringify(state.done) !== JSON.stringify(payload.done) || JSON.stringify(state.cursor) !== JSON.stringify(payload.cursor)) {
+        state.done = payload.done;
+        state.cursor = payload.cursor;
+        changed = true;
+        applyingRemote = true;
+        try { save(state); } finally { applyingRemote = false; }
+      }
+    }
+    persistSyncMeta();
+    return changed;
+  });
+}
+
+function submitAccount(ev) {
+  ev.preventDefault();
+  const err = document.getElementById("acct-error");
+  const loginEl = document.getElementById("acct-login");
+  const passwordEl = document.getElementById("acct-password");
+  const login = loginEl ? loginEl.value.trim() : "";
+  const password = passwordEl ? passwordEl.value : "";
+  const create = accountMode === "create";
+  if (!login) { err.textContent = "Enter an email or username."; return; }
+  if (password.length < 8) { err.textContent = "Use at least 8 characters."; return; }
+  if (password.length > 200) { err.textContent = "Password must be 8 to 200 characters."; return; }
+  if (create) {
+    const confirmEl = document.getElementById("acct-confirm");
+    const ack = document.getElementById("acct-ack");
+    if (!ack || !ack.checked) { err.textContent = "Check the box before creating the account."; return; }
+    if (!confirmEl || password !== confirmEl.value) { err.textContent = "Those passwords do not match."; return; }
+  }
+  const submit = document.getElementById("acct-submit");
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = create ? "Creating account…" : "Signing in…";
+  }
+  const path = create ? "/auth/register" : "/auth/login";
+  fetch(syncBase() + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: login, password: password })
+  }).then(function (response) {
+    return readJsonResponse(response).then(function (body) {
+      const okStatus = create ? 201 : 200;
+      if (response.status !== okStatus || !body || typeof body.token !== "string" || typeof body.email !== "string") {
+        throw new Error((body && body.error) || (create ? "The account was not created." : "Sign-in did not finish."));
+      }
+      syncMeta.session = { token: body.token, email: body.email };
+      syncMeta.syncError = "";
+      persistSyncMeta();
+      return requestPersistentStorage();
+    });
+  }).then(function () {
+    screen = "home";
+    render();
+    return syncNow();
+  }).catch(function (error) {
+    if (!err) return;
+    if (error && error.name === "TypeError") {
+      err.textContent = create
+        ? "Could not reach the sync server. The account was not created."
+        : "Could not reach the sync server. You are not signed in.";
+    } else {
+      err.textContent = (error && error.message) || (create ? "The account was not created." : "Sign-in did not finish.");
+    }
+    if (submit) {
+      submit.disabled = false;
+      submit.textContent = create ? "Create account" : "Sign in";
+    }
+  });
+}
+
+function signOut() {
+  const token = syncMeta.session && syncMeta.session.token;
+  syncMeta.session = null;
+  syncMeta.syncing = false;
+  syncMeta.syncError = "";
+  persistSyncMeta();
+  if (screen === "account") screen = "home";
+  render();
+  if (!token) return;
+  fetch(syncBase() + "/auth/logout", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token }
+  }).catch(function () {});
 }
 
 detectQr();
 render();
+requestPersistentStorage();
+if (syncMeta.session) syncNow();
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible" && syncMeta.session) syncNow();
+});
 </script>
 <script>
 if ("serviceWorker" in navigator) {

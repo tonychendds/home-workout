@@ -1,0 +1,13 @@
+{
+  "name": "home-workout",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm test --prefix worker && node tests/sync-e2e.mjs",
+    "test:worker": "npm test --prefix worker",
+    "test:e2e": "node tests/sync-e2e.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.15.0"
+  }
+}
