@@ -1,0 +1,13 @@
+name = "workout-sync"
+main = "src/index.ts"
+compatibility_date = "2026-03-01"
+workers_dev = true
+
+# Placeholder until the database is created. Replace database_id with the id
+# printed by `npx wrangler d1 create workout-sync` before the first remote deploy.
+# Remote URL after deploy: https://workout-sync.tonychendds.workers.dev
+[[d1_databases]]
+binding = "DB"
+database_name = "workout-sync"
+database_id = "00000000-0000-4000-8000-000000000000"
+migrations_dir = "migrations"

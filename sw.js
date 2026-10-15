@@ -1,4 +1,5 @@
-/* Navigations reload so a published update, including the home photo and the Workout name, is what the phone opens. */
+/* Navigations reload so a published update, including accounts and sync, is what the phone opens. */
+/* This origin is shared by every app on tonychendds.github.io. Cache names for this app start with tony-workout-. Do not delete other apps' caches or databases. */
 self.addEventListener("install", function (event) {
   event.waitUntil(self.skipWaiting());
 });
