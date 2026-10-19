@@ -239,8 +239,15 @@
   }
   .pf-home strong { color: #d7d4ff; }
   .pf-section { margin-top: 12px; }
-  .pf-entry { border-top: 1px solid var(--line); padding: 14px 0 6px; }
-  .pf-entry h3 { margin: 0 0 4px; font-size: 18px; }
+  .pf-entry {
+    border-top: 1px solid var(--line);
+    padding: 14px 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .pf-entry-main { flex: 1; min-width: 0; }
+  .pf-entry h3 { margin: 0 0 4px; font-size: 18px; overflow-wrap: anywhere; }
   .pf-meta { color: var(--muted); font-size: 15px; margin: 0 0 4px; }
   .pf-progress { color: var(--accent); font-size: 14px; margin: 0 0 8px; }
   .video-link { color: var(--warn); font-weight: 700; font-size: 16px; }
@@ -265,15 +272,26 @@
   .empty-note { color: var(--muted); font-size: 15px; margin: 8px 0 0; }
   .pf-thumb {
     display: block;
-    width: 112px;
-    height: 112px;
+    flex: 0 0 96px;
+    width: 96px;
+    height: 96px;
     padding: 0;
-    margin: 0 0 8px;
+    margin: 0;
     border-radius: 12px;
     overflow: hidden;
     background: #10141b;
+    line-height: 0;
   }
-  .pf-thumb img, .pf-photo-now {
+  .pf-thumb img {
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    display: block;
+    margin: 0;
+    border-radius: 12px;
+    background: #10141b;
+  }
+  .pf-photo-now {
     width: 112px;
     height: 112px;
     object-fit: cover;
@@ -1146,7 +1164,7 @@ function pfEntryHtml(entry, list) {
     ? '<button type="button" class="pf-thumb" data-pf-view="' + esc(entry.id) + '"><img alt="Photo of ' + esc(entry.name) + '" src="' + src + '"></button>'
     : "";
   return '<article class="pf-entry">' +
-    thumb +
+    '<div class="pf-entry-main">' +
     '<h3>' + esc(entry.name) + '</h3>' +
     '<p class="pf-meta">' + esc(prettyDate(entry.date)) + ' · ' + esc(weightText(entry.weight)) + ' lb</p>' +
     (change ? '<p class="pf-progress">' + esc(change) + '</p>' : '') +
@@ -1155,7 +1173,9 @@ function pfEntryHtml(entry, list) {
     '<button type="button" data-pf-edit="' + esc(entry.id) + '">Edit</button>' +
     '<button type="button" data-pf-again="' + esc(entry.id) + '">Log again</button>' +
     '<button type="button" class="danger" data-pf-delete="' + esc(entry.id) + '">Delete</button>' +
-    '</div></article>';
+    '</div></div>' +
+    thumb +
+    '</article>';
 }
 
 function pfHtml() {
