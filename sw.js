@@ -1,4 +1,4 @@
-/* Navigations reload so a published update, including the Planet Fitness photo beside each entry, is what the phone opens. */
+/* Navigations reload so a published update, including collapsible Planet Fitness sections, is what the phone opens. */
 /* This origin is shared by every app on tonychendds.github.io. Cache names for this app start with tony-workout-. Do not delete other apps' caches or databases. */
 self.addEventListener("install", function (event) {
   event.waitUntil(self.skipWaiting());

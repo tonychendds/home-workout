@@ -239,6 +239,44 @@
   }
   .pf-home strong { color: #d7d4ff; }
   .pf-section { margin-top: 12px; }
+  .pf-section-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 44px;
+    margin: 0;
+    padding: 2px 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+  .pf-chevron {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 22px;
+    position: relative;
+  }
+  .pf-chevron::before {
+    content: "";
+    position: absolute;
+    left: 7px;
+    top: 5px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg);
+  }
+  .pf-section-toggle[aria-expanded="true"] .pf-chevron::before {
+    top: 3px;
+    transform: rotate(45deg);
+  }
+  .pf-section-label { min-width: 0; }
   .pf-entry {
     border-top: 1px solid var(--line);
     padding: 14px 0 6px;
@@ -853,6 +891,7 @@ async function onAdd(ev) {
 }
 
 const PF_KEY = "tony-planet-fitness-v1";
+const PF_OPEN_KEY = "tony-planet-fitness-sections-v1";
 const PF_SECTIONS = [
   { id: "leg", label: "Leg" },
   { id: "hip", label: "Hip" },
@@ -860,6 +899,35 @@ const PF_SECTIONS = [
   { id: "back", label: "Back" },
   { id: "upper", label: "Upper body" }
 ];
+
+function loadPfOpen() {
+  const open = {};
+  PF_SECTIONS.forEach(function (section) { open[section.id] = false; });
+  try {
+    const data = JSON.parse(localStorage.getItem(PF_OPEN_KEY) || "{}");
+    if (!data || typeof data !== "object" || Array.isArray(data)) return open;
+    PF_SECTIONS.forEach(function (section) { open[section.id] = data[section.id] === true; });
+  } catch (e) {}
+  return open;
+}
+
+function savePfOpen() {
+  const stored = {};
+  PF_SECTIONS.forEach(function (section) { stored[section.id] = pfOpen[section.id] === true; });
+  try { localStorage.setItem(PF_OPEN_KEY, JSON.stringify(stored)); } catch (e) {}
+}
+
+let pfOpen = loadPfOpen();
+
+function setPfSectionOpen(id, value) {
+  if (!PF_SECTIONS.some(function (section) { return section.id === id; })) return;
+  pfOpen[id] = value === true;
+  savePfOpen();
+}
+
+function pfSectionOpen(id) {
+  return pfOpen[id] === true || !!(pfForm && pfForm.section === id);
+}
 
 function todayISO() {
   const d = new Date();
@@ -1181,14 +1249,19 @@ function pfEntryHtml(entry, list) {
 function pfHtml() {
   const sections = PF_SECTIONS.map(function (section) {
     const list = pfSorted(section.id);
+    const expanded = pfSectionOpen(section.id);
     const formOpen = pfForm && pfForm.section === section.id;
     const adder = formOpen
       ? pfFormHtml(section)
       : '<button class="ghost" type="button" data-pf-add="' + section.id + '" style="width:100%;margin-top:8px">Add a workout</button>';
     const entries = list.map(function (entry) { return pfEntryHtml(entry, list); }).join("");
     const empty = !list.length && !formOpen ? '<p class="empty-note">Nothing logged yet.</p>' : "";
-    return '<section class="card pf-section"><h2 class="name" style="font-size:24px">' + section.label + '</h2>' +
-      adder + empty + entries + '</section>';
+    const body = expanded ? adder + empty + entries : "";
+    return '<section class="card pf-section">' +
+      '<button type="button" class="pf-section-toggle" data-pf-toggle="' + section.id + '" aria-expanded="' + (expanded ? "true" : "false") + '">' +
+      '<span class="pf-chevron" aria-hidden="true"></span>' +
+      '<span class="pf-section-label">' + esc(section.label) + " (" + list.length + ")</span></button>" +
+      body + "</section>";
   }).join("");
   const viewer = pfViewer
     ? '<div class="lightbox" id="pf-lightbox"><button type="button" class="lightbox-close" id="pf-lightbox-close">Close</button><img alt="" src="' + pfViewer + '"></div>'
@@ -1201,6 +1274,7 @@ function pfHtml() {
 
 function openPfForm(sectionId, seed) {
   pfViewer = "";
+  setPfSectionOpen(sectionId, true);
   pfForm = {
     section: sectionId,
     id: seed && seed.id ? seed.id : "",
@@ -1345,6 +1419,7 @@ async function onPfSave(ev) {
   }
   const previousId = pfForm.photoId || "";
   pfLogs = next;
+  setPfSectionOpen(section, true);
   if (previousId && previousId !== photoId && !photoStillUsed(previousId, pfLogs)) {
     try { await deletePfPhoto(previousId); } catch (e) {}
     delete pfPhotoCache[previousId];
@@ -1462,6 +1537,18 @@ function bind() {
     render();
     refreshPfPhotos().then(function () {
       if (screen === "pf" && !pfForm && !scanStream) render();
+    });
+  });
+  document.querySelectorAll("[data-pf-toggle]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const id = btn.getAttribute("data-pf-toggle");
+      const next = !pfSectionOpen(id);
+      setPfSectionOpen(id, next);
+      if (!next && pfForm && pfForm.section === id) {
+        stopScan();
+        pfForm = null;
+      }
+      render();
     });
   });
   document.querySelectorAll("[data-pf-add]").forEach(function (btn) {

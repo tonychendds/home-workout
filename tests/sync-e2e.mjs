@@ -124,6 +124,7 @@ async function main() {
     await tap(page, "#back");
     await tap(page, "#back");
     await tap(page, "#pf");
+    await tap(page, "[data-pf-toggle='hip']");
     await tap(page, "[data-pf-add='hip']");
     await page.type("#pf-form input[name='name']", "Hip abduction");
     await page.type("#pf-form input[name='weight']", "40.5");
@@ -150,6 +151,7 @@ async function main() {
     await other.waitForFunction(() => [...document.querySelectorAll(".badge")].some((el) => el.textContent === "Done"));
     await tap(other, "#back");
     await tap(other, "#pf");
+    await tap(other, "[data-pf-toggle='hip']");
     await other.waitForFunction(() => document.body.innerText.includes("Hip abduction") && document.querySelector("img[alt='Photo of Hip abduction']"));
 
     stamp = await syncedAt(page);
@@ -170,6 +172,7 @@ async function main() {
     await tap(other, "#back");
     await tap(other, "#back");
     await tap(other, "#pf");
+    await tap(other, "[data-pf-toggle='hip']");
     await other.waitForFunction(() => document.body.innerText.includes("Hip abduction"));
 
     const emptyBrowser = await launch(browsers, false);
@@ -180,6 +183,7 @@ async function main() {
     await tap(empty, "#acct-submit");
     await empty.waitForFunction(() => (document.querySelector("#sync-banner p")?.textContent || "").includes("Last synced"), { timeout: 20000 });
     await tap(empty, "#pf");
+    await tap(empty, "[data-pf-toggle='hip']");
     await empty.waitForFunction(() => document.body.innerText.includes("Hip abduction"));
     assert.equal(await empty.evaluate(() => document.body.innerText.includes("Phone squat")), false);
     await tap(empty, "#back");
