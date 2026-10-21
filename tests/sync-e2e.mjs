@@ -89,7 +89,7 @@ async function main() {
     let stamp = await syncedAt(page);
     await tap(page, "#hw");
     await tap(page, "[data-day='upper']");
-    for (let step = 0; step < 6; step++) {
+    for (let step = 0; step < 5; step++) {
       const before = await page.evaluate(() => document.body.innerText.slice(0, 400));
       await tap(page, "#next2");
       try {
