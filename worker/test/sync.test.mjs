@@ -125,6 +125,30 @@ test("register, login, per-record sync, tombstones, and CORS", { timeout: 180000
     assert.equal(pulled.status, 200);
     assert.equal((await pulled.json()).records.length, 3);
 
+    const hidden = {
+      id: "hidden",
+      type: "hidden",
+      updatedAt: 100,
+      deleted: false,
+      payload: { moves: [{ dayId: "upper", name: "Lat pulldown" }, { dayId: "upper", name: "Lat pulldown" }] },
+    };
+    const hiddenSave = await server.sync(token, [hidden]);
+    assert.equal(hiddenSave.status, 200);
+    const storedHidden = (await hiddenSave.json()).records.find((record) => record.id === "hidden");
+    assert.equal(storedHidden.type, "hidden");
+    assert.equal(storedHidden.payload.moves.length, 1);
+    assert.equal(storedHidden.payload.moves[0].name, "Lat pulldown");
+
+    const badHidden = await server.sync(token, [{ ...hidden, updatedAt: 110, payload: { moves: [{ dayId: "legs", name: "Nope" }] } }]);
+    assert.equal(badHidden.status, 400);
+    const keptHidden = await (await server.sync(token, [])).json();
+    assert.equal(keptHidden.records.find((record) => record.id === "hidden").payload.moves.length, 1);
+
+    const cleared = { ...hidden, updatedAt: 120, payload: { moves: [] } };
+    assert.equal((await server.sync(token, [cleared])).status, 200);
+    const afterClear = await (await server.sync(token, [])).json();
+    assert.deepEqual(afterClear.records.find((record) => record.id === "hidden").payload.moves, []);
+
     const me = await (await server.request("/auth/me", { token })).json();
     assert.equal(me.email, "tony@example.com");
 

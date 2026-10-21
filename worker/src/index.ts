@@ -39,7 +39,7 @@ interface RecordRow {
   payload: string | null;
 }
 
-type RecordType = "exercise" | "pf" | "progress";
+type RecordType = "exercise" | "pf" | "progress" | "hidden";
 
 interface SyncRecord {
   id: string;
@@ -258,7 +258,7 @@ function parseRecord(raw: unknown): { ok: true; record: SyncRecord } | { ok: fal
   const id = typeof value.id === "string" ? value.id : "";
   if (!/^[A-Za-z0-9:_-]{1,80}$/.test(id)) return { ok: false, error: "A record id is not valid." };
   const type = value.type;
-  if (type !== "exercise" && type !== "pf" && type !== "progress") {
+  if (type !== "exercise" && type !== "pf" && type !== "progress" && type !== "hidden") {
     return { ok: false, error: "A record type is not valid." };
   }
   const updatedAt = value.updatedAt;
@@ -280,7 +280,26 @@ function parsePayload(type: RecordType, raw: unknown): Record<string, unknown> |
   const value = raw as Record<string, unknown>;
   if (type === "exercise") return parseExercise(value);
   if (type === "pf") return parsePf(value);
+  if (type === "hidden") return parseHidden(value);
   return parseProgress(value);
+}
+
+function parseHidden(value: Record<string, unknown>): Record<string, unknown> | null {
+  if (!Array.isArray(value.moves) || value.moves.length > 40) return null;
+  const moves: Array<{ dayId: string; name: string }> = [];
+  const seen = new Set<string>();
+  for (const raw of value.moves) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const item = raw as Record<string, unknown>;
+    const dayId = item.dayId === "upper" || item.dayId === "lower" || item.dayId === "core" ? item.dayId : null;
+    const name = requiredText(item.name, 80);
+    if (!dayId || !name) return null;
+    const key = dayId + "\n" + name;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    moves.push({ dayId, name });
+  }
+  return { moves };
 }
 
 function parseExercise(value: Record<string, unknown>): Record<string, unknown> | null {
