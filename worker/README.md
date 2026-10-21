@@ -47,7 +47,7 @@ npx wrangler dev
 - `POST /sync` with `{ "records": [...] }` upserts those records and returns the full set. An empty `records` array only reads. It does not delete anything.
 - `GET /sync` reads every record for the signed-in account.
 
-Each record is `{ id, type, updatedAt, deleted, payload }`. `type` is `exercise`, `pf`, or `progress`. A delete is stored as `deleted: true` and is never removed. A later push of a live copy does not bring it back.
+Each record is `{ id, type, updatedAt, deleted, payload }`. `type` is `exercise`, `pf`, `progress`, or `hidden`. A delete is stored as `deleted: true` and is never removed. A later push of a live copy does not bring it back. The hidden list is one live `hidden` record with id `hidden` and payload `{ moves: [{ dayId, name }] }`. An empty `moves` list means nothing is hidden. That record stays live when the list is cleared, because a tombstone would block a later hide.
 
 A record whose JSON is over 90,000 characters, or whose photo is over 80,000 characters, is rejected with "A record is too large to store. Shrink the photo and try again." Nothing else in that request is written.
 

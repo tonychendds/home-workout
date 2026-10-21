@@ -1,4 +1,4 @@
-/* Navigations reload so a published update, including Day 1 without the easy air bike, is what the phone opens. */
+/* Navigations reload so a published update, including remove and restore for built-in exercises, is what the phone opens. */
 /* This origin is shared by every app on tonychendds.github.io. Cache names for this app start with tony-workout-. Do not delete other apps' caches or databases. */
 self.addEventListener("install", function (event) {
   event.waitUntil(self.skipWaiting());

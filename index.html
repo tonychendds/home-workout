@@ -222,15 +222,17 @@
   .mine-name { flex: 1; min-width: 0; }
   .mine-name strong { display: block; font-size: 16px; }
   .mine-name span { color: var(--muted); font-size: 13px; }
-  .remove {
+  .remove, .restore {
     background: transparent;
-    color: var(--danger);
     font-weight: 700;
     min-height: 44px;
     padding: 8px 4px;
     flex: none;
   }
+  .remove { color: var(--danger); }
+  .restore { color: var(--accent); }
   .yours { font-size: 20px; margin: 22px 0 4px; }
+  .removed-title { font-size: 16px; margin: 22px 0 0; color: var(--muted); }
   .pf-home {
     width: 100%;
     margin: 0 0 16px;
@@ -488,6 +490,7 @@ function fig(m) {
 // Never clear all of localStorage, and never delete another app's caches or databases.
 const KEY = "tony-home-gym-plan-v1";
 const CUSTOM_KEY = "tony-home-gym-custom-v1";
+const HIDDEN_KEY = "tony-home-gym-hidden-v1";
 
 function load() {
   try {
@@ -550,7 +553,54 @@ function saveCustom(list) {
   scheduleSync();
 }
 
+function isBuiltIn(dayId, name) {
+  const day = DAYS.find(function (d) { return d.id === dayId; });
+  if (!day || !name) return false;
+  return day.moves.some(function (m) { return m.name === name; });
+}
+
+function normalizeHidden(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = {};
+  const next = [];
+  list.forEach(function (item) {
+    if (!item || !DAY_LABEL[item.dayId]) return;
+    const name = clean(item.name, 80);
+    const key = item.dayId + "\n" + name;
+    if (!name || !isBuiltIn(item.dayId, name) || seen[key]) return;
+    seen[key] = true;
+    next.push({ dayId: item.dayId, name: name });
+  });
+  return next;
+}
+
+function loadHidden() {
+  try {
+    const raw = localStorage.getItem(HIDDEN_KEY);
+    if (!raw) return [];
+    return normalizeHidden(JSON.parse(raw));
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveHidden(list) {
+  const next = normalizeHidden(list);
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify(next));
+  hidden = next;
+  if (applyingRemote) return;
+  stampTime("hidden");
+  scheduleSync();
+}
+
+function isHidden(dayId, name) {
+  return hidden.some(function (item) { return item.dayId === dayId && item.name === name; });
+}
+
 function movesFor(day) {
+  const built = day.moves.filter(function (m) { return !isHidden(day.id, m.name); }).map(function (m) {
+    return { name: m.name, dose: m.dose, how: m.how, rest: m.rest, dayId: day.id, custom: false };
+  });
   const extra = customs.filter(function (c) { return c.dayId === day.id; }).map(function (c) {
     return {
       name: c.name,
@@ -559,10 +609,11 @@ function movesFor(day) {
       rest: typeof c.rest === "number" ? c.rest : day.restStrength,
       custom: true,
       id: c.id,
+      dayId: c.dayId,
       photo: c.photo || ""
     };
   });
-  return day.moves.concat(extra);
+  return built.concat(extra);
 }
 
 async function compressImage(file) {
@@ -606,6 +657,7 @@ async function compressImage(file) {
 
 const state = load();
 let customs = loadCustom();
+let hidden = loadHidden();
 let screen = "home";
 let accountMode = "signin";
 let applyingRemote = false;
@@ -623,6 +675,7 @@ function pool() {
     movesFor(d).forEach(function (m) {
       list.push({
         day: d.title,
+        dayId: d.id,
         name: m.name,
         dose: m.dose,
         how: m.how,
@@ -708,13 +761,25 @@ function workoutHtml() {
     '<li>Shoulder press: Trainer Academy, CC BY-SA 3.0</li>' +
     '<li>Plank: Shixart1985, CC BY 2.0</li>' +
     '<li>Bike intervals: Klimek.6, public domain</li>' +
-    '</ul></details>';
+    '</ul></details>' +
+    removedHtml();
+}
+
+function removedHtml() {
+  if (!hidden.length) return "";
+  const rows = hidden.map(function (item) {
+    return '<div class="mine"><div class="mine-name"><strong>' + esc(item.name) + '</strong><span>' +
+      esc(DAY_LABEL[item.dayId] || "") + '</span></div>' +
+      '<button class="restore" type="button" data-restore-day="' + esc(item.dayId) + '" data-restore-name="' +
+      esc(item.name) + '">Restore</button></div>';
+  }).join("");
+  return '<h2 class="removed-title">Removed exercises</h2>' + rows;
 }
 
 function exerciseCard(progress, m, foot, lead) {
   const remove = m.custom
-    ? '<button class="ghost remove-wide" type="button" data-remove="' + esc(m.id) + '">Remove this exercise</button>'
-    : "";
+    ? '<button class="ghost remove-wide" type="button" data-remove="' + esc(m.id) + '">Remove</button>'
+    : '<button class="ghost remove-wide" type="button" data-hide-day="' + esc(m.dayId) + '" data-hide-name="' + esc(m.name) + '">Remove</button>';
   return '<div class="card">' +
     '<p class="progress">' + progress + '</p>' +
     (lead || "") +
@@ -730,6 +795,10 @@ function exerciseCard(progress, m, foot, lead) {
 function moveHtml() {
   const day = dayById(dayId);
   const moves = movesFor(day);
+  if (!moves.length) {
+    screen = "workout";
+    return workoutHtml();
+  }
   const m = moves[index];
   if (!m) {
     screen = "finish";
@@ -1644,6 +1713,34 @@ function bind() {
       render();
     });
   });
+  document.querySelectorAll("[data-hide-day]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const day = btn.getAttribute("data-hide-day");
+      const name = btn.getAttribute("data-hide-name");
+      if (!isBuiltIn(day, name) || isHidden(day, name)) return;
+      if (!window.confirm("Remove " + name + "? It stays off your days and the lottery until you restore it.")) return;
+      try {
+        saveHidden(hidden.concat([{ dayId: day, name: name }]));
+      } catch (e) {
+        return;
+      }
+      if (drawn && drawn.dayId === day && drawn.name === name) drawn = null;
+      if (screen === "move" || screen === "draw") screen = "workout";
+      render();
+    });
+  });
+  document.querySelectorAll("[data-restore-day]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const day = btn.getAttribute("data-restore-day");
+      const name = btn.getAttribute("data-restore-name");
+      try {
+        saveHidden(hidden.filter(function (item) { return item.dayId !== day || item.name !== name; }));
+      } catch (e) {
+        return;
+      }
+      render();
+    });
+  });
   const acctForm = document.getElementById("acct-form");
   if (acctForm) acctForm.addEventListener("submit", submitAccount);
   const acctSwitch = document.getElementById("acct-switch");
@@ -2004,11 +2101,20 @@ function collectRecords() {
       const rec = { id: "plan", type: "progress", updatedAt: timeFor("plan", 0), deleted: false, payload: progressPayload() };
       records.push(rec);
     }
+    if (hidden.length || typeof syncMeta.times.hidden === "number") {
+      records.push({
+        id: "hidden",
+        type: "hidden",
+        updatedAt: timeFor("hidden", 0),
+        deleted: false,
+        payload: { moves: hidden.map(function (item) { return { dayId: item.dayId, name: item.name }; }) }
+      });
+    }
     return { records: records, oversized: oversized };
   });
 }
 
-function chunkRecords(records) {
+function packRecords(records) {
   const chunks = [];
   let current = [];
   let size = 20;
@@ -2022,7 +2128,16 @@ function chunkRecords(records) {
     current.push(rec);
     size += encoded.length + 1;
   });
-  if (current.length || !chunks.length) chunks.push(current);
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
+function chunkRecords(records) {
+  const hiddenRecs = records.filter(function (rec) { return rec.type === "hidden"; });
+  const rest = records.filter(function (rec) { return rec.type !== "hidden"; });
+  const chunks = packRecords(rest);
+  if (hiddenRecs.length) chunks.push(hiddenRecs);
+  if (!chunks.length) chunks.push([]);
   return chunks;
 }
 
@@ -2183,8 +2298,20 @@ function applyServerRecords(records) {
   const pfDeletes = [];
   let progress = null;
   let progressDelete = false;
+  let hiddenRemote = null;
+  let hiddenClear = false;
   records.forEach(function (rec) {
     if (!rec || !recordIdOk(rec.id)) return;
+    if (rec.type === "hidden") {
+      if (rec.id !== "hidden" || typeof rec.updatedAt !== "number") return;
+      const localTime = typeof syncMeta.times[rec.id] === "number" ? syncMeta.times[rec.id] : 0;
+      if (localTime > rec.updatedAt) return;
+      delete syncMeta.tombstones[rec.id];
+      syncMeta.times[rec.id] = rec.updatedAt;
+      if (rec.deleted) hiddenClear = true;
+      else hiddenRemote = rec;
+      return;
+    }
     if (rec.type !== "exercise" && rec.type !== "pf" && rec.type !== "progress") return;
     if (typeof rec.updatedAt !== "number") return;
     if (localBeats(rec.id, rec)) return;
@@ -2270,6 +2397,14 @@ function applyServerRecords(records) {
         changed = true;
         applyingRemote = true;
         try { save(state); } finally { applyingRemote = false; }
+      }
+    }
+    if (hiddenClear || hiddenRemote) {
+      const next = hiddenClear ? [] : normalizeHidden(hiddenRemote.payload && hiddenRemote.payload.moves);
+      if (JSON.stringify(hidden) !== JSON.stringify(next)) {
+        changed = true;
+        applyingRemote = true;
+        try { saveHidden(next); } finally { applyingRemote = false; }
       }
     }
     persistSyncMeta();
