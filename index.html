@@ -279,13 +279,35 @@
     transform: rotate(45deg);
   }
   .pf-section-label { min-width: 0; }
-  .pf-entry {
+  .pf-group {
     border-top: 1px solid var(--line);
     padding: 14px 0 6px;
+  }
+  .pf-entry {
     display: flex;
     align-items: center;
     gap: 12px;
   }
+  .pf-history-toggle {
+    display: block;
+    width: 100%;
+    margin: 2px 0 0;
+    padding: 8px 0;
+    background: transparent;
+    color: #d7d4ff;
+    font-weight: 700;
+    font-size: 15px;
+    min-height: 44px;
+    text-align: left;
+  }
+  .pf-history-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .pf-history-row .pf-meta { margin: 0; }
+  .pf-history-row .pf-actions { margin: 0; flex: none; }
   .pf-entry-main { flex: 1; min-width: 0; }
   .pf-entry h3 { margin: 0 0 4px; font-size: 18px; overflow-wrap: anywhere; }
   .pf-meta { color: var(--muted); font-size: 15px; margin: 0 0 4px; }
@@ -1209,6 +1231,7 @@ function clearPfPreview() {
 
 let pfLogs = loadPf();
 let pfForm = null;
+let pfHistoryOpen = {};
 let qrScan = false;
 let scanStream = null;
 let scanTimer = null;
@@ -1234,18 +1257,23 @@ function pfSorted(sectionId) {
   });
 }
 
-function earlierSame(entry, list) {
-  const name = entry.name.toLowerCase();
-  let seen = false;
-  for (let i = 0; i < list.length; i++) {
-    if (list[i].id === entry.id) {
-      seen = true;
-      continue;
+function pfNameKey(name) {
+  return String(name || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function pfGroups(sectionId) {
+  const groups = [];
+  const index = {};
+  pfSorted(sectionId).forEach(function (entry) {
+    const key = pfNameKey(entry.name);
+    if (!key) return;
+    if (index[key] == null) {
+      index[key] = groups.length;
+      groups.push([]);
     }
-    if (!seen) continue;
-    if (list[i].name.toLowerCase() === name) return list[i];
-  }
-  return null;
+    groups[index[key]].push(entry);
+  });
+  return groups;
 }
 
 function progressLine(entry, prev) {
@@ -1287,46 +1315,68 @@ function pfFormHtml(section) {
     '</form>';
 }
 
-function pfEntryHtml(entry, list) {
-  const prev = earlierSame(entry, list);
-  const change = progressLine(entry, prev);
-  const link = entry.link
-    ? '<a class="video-link" href="' + esc(entry.link) + '" target="_blank" rel="noopener noreferrer">Watch video</a>'
-    : "";
-  const src = entryPhotoSrc(entry);
-  const thumb = src
-    ? '<button type="button" class="pf-thumb" data-pf-view="' + esc(entry.id) + '"><img alt="Photo of ' + esc(entry.name) + '" src="' + src + '"></button>'
-    : "";
-  return '<article class="pf-entry">' +
-    '<div class="pf-entry-main">' +
-    '<h3>' + esc(entry.name) + '</h3>' +
+function pfHistoryHtml(entry) {
+  return '<div class="pf-history-row">' +
     '<p class="pf-meta">' + esc(prettyDate(entry.date)) + ' · ' + esc(weightText(entry.weight)) + ' lb</p>' +
+    '<div class="pf-actions">' +
+    '<button type="button" data-pf-edit="' + esc(entry.id) + '">Edit</button>' +
+    '<button type="button" class="danger" data-pf-delete="' + esc(entry.id) + '">Delete</button>' +
+    '</div></div>';
+}
+
+function pfGroupHtml(group) {
+  const latest = group[0];
+  const prev = group.length > 1 ? group[1] : null;
+  const change = progressLine(latest, prev);
+  const photoEntry = group.filter(function (entry) { return entryPhotoSrc(entry); })[0] || null;
+  const videoEntry = group.filter(function (entry) { return entry.link; })[0] || null;
+  const link = videoEntry
+    ? '<a class="video-link" href="' + esc(videoEntry.link) + '" target="_blank" rel="noopener noreferrer">Watch video</a>'
+    : "";
+  const src = photoEntry ? entryPhotoSrc(photoEntry) : "";
+  const thumb = src
+    ? '<button type="button" class="pf-thumb" data-pf-view="' + esc(photoEntry.id) + '"><img alt="Photo of ' + esc(latest.name) + '" src="' + src + '"></button>'
+    : "";
+  const older = group.slice(1);
+  const historyKey = latest.section + "\n" + pfNameKey(latest.name);
+  const historyOpen = !!pfHistoryOpen[historyKey];
+  const history = older.length
+    ? '<button type="button" class="pf-history-toggle" data-pf-history-section="' + esc(latest.section) + '" data-pf-history-name="' + esc(pfNameKey(latest.name)) + '" aria-expanded="' + (historyOpen ? "true" : "false") + '">History (' + older.length + ')</button>' +
+      (historyOpen ? older.map(pfHistoryHtml).join("") : "")
+    : "";
+  return '<article class="pf-group">' +
+    '<div class="pf-entry">' +
+    '<div class="pf-entry-main">' +
+    '<h3>' + esc(latest.name) + '</h3>' +
+    '<p class="pf-meta">' + esc(prettyDate(latest.date)) + ' · ' + esc(weightText(latest.weight)) + ' lb</p>' +
     (change ? '<p class="pf-progress">' + esc(change) + '</p>' : '') +
     link +
     '<div class="pf-actions">' +
-    '<button type="button" data-pf-edit="' + esc(entry.id) + '">Edit</button>' +
-    '<button type="button" data-pf-again="' + esc(entry.id) + '">Log again</button>' +
-    '<button type="button" class="danger" data-pf-delete="' + esc(entry.id) + '">Delete</button>' +
+    '<button type="button" data-pf-edit="' + esc(latest.id) + '">Edit</button>' +
+    '<button type="button" data-pf-again="' + esc(latest.id) + '">Log again</button>' +
+    '<button type="button" class="danger" data-pf-delete="' + esc(latest.id) + '">Delete</button>' +
     '</div></div>' +
     thumb +
+    '</div>' +
+    history +
     '</article>';
 }
 
 function pfHtml() {
   const sections = PF_SECTIONS.map(function (section) {
-    const list = pfSorted(section.id);
+    const groups = pfGroups(section.id);
     const expanded = pfSectionOpen(section.id);
     const formOpen = pfForm && pfForm.section === section.id;
     const adder = formOpen
       ? pfFormHtml(section)
       : '<button class="ghost" type="button" data-pf-add="' + section.id + '" style="width:100%;margin-top:8px">Add a workout</button>';
-    const entries = list.map(function (entry) { return pfEntryHtml(entry, list); }).join("");
-    const empty = !list.length && !formOpen ? '<p class="empty-note">Nothing logged yet.</p>' : "";
+    const entries = groups.map(pfGroupHtml).join("");
+    const empty = !groups.length && !formOpen ? '<p class="empty-note">Nothing logged yet.</p>' : "";
     const body = expanded ? adder + empty + entries : "";
     return '<section class="card pf-section">' +
       '<button type="button" class="pf-section-toggle" data-pf-toggle="' + section.id + '" aria-expanded="' + (expanded ? "true" : "false") + '">' +
       '<span class="pf-chevron" aria-hidden="true"></span>' +
-      '<span class="pf-section-label">' + esc(section.label) + " (" + list.length + ")</span></button>" +
+      '<span class="pf-section-label">' + esc(section.label) + " (" + groups.length + ")</span></button>" +
       body + "</section>";
   }).join("");
   const viewer = pfViewer
@@ -1614,6 +1664,13 @@ function bind() {
         stopScan();
         pfForm = null;
       }
+      render();
+    });
+  });
+  document.querySelectorAll("[data-pf-history-section]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const key = btn.getAttribute("data-pf-history-section") + "\n" + btn.getAttribute("data-pf-history-name");
+      pfHistoryOpen[key] = !pfHistoryOpen[key];
       render();
     });
   });
